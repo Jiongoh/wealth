@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: ${APP_NAME:-ibkr-sync}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      DATABASE_URL: ${DATABASE_URL}
+      RAW_XML_DIR: ${RAW_XML_DIR:-/app/storage/raw_xml}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Taipei}
+      IBKR_TOKEN: ${IBKR_TOKEN:-}
+      IBKR_QUERY_ID: ${IBKR_QUERY_ID:-}
+      IBKR_FLEX_URL: ${IBKR_FLEX_URL:-}
+      IBKR_FLEX_VERSION: ${IBKR_FLEX_VERSION:-3}
+      IBKR_REQUEST_TIMEOUT_SECONDS: ${IBKR_REQUEST_TIMEOUT_SECONDS:-30}
+      IBKR_STATEMENT_POLL_SECONDS: ${IBKR_STATEMENT_POLL_SECONDS:-5}
+      IBKR_STATEMENT_POLL_ATTEMPTS: ${IBKR_STATEMENT_POLL_ATTEMPTS:-5}
+      SYNC_CRON_HOUR: ${SYNC_CRON_HOUR:-8}
+      SYNC_CRON_MINUTE: ${SYNC_CRON_MINUTE:-30}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-}
+      ALPACA_API_KEY_ID: ${ALPACA_API_KEY_ID:-}
+      ALPACA_API_SECRET_KEY: ${ALPACA_API_SECRET_KEY:-}
+      ALPACA_FEED_MODE: ${ALPACA_FEED_MODE:-auto}
+      ALPACA_MAX_SYMBOLS: ${ALPACA_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_ENABLED: ${YAHOO_FALLBACK_ENABLED:-true}
+      YAHOO_FALLBACK_MODE: ${YAHOO_FALLBACK_MODE:-auto}
+      YAHOO_FALLBACK_INTERVAL_SECONDS: ${YAHOO_FALLBACK_INTERVAL_SECONDS:-15}
+      YAHOO_FALLBACK_MAX_SYMBOLS: ${YAHOO_FALLBACK_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_WRITE_CANDLES: ${YAHOO_FALLBACK_WRITE_CANDLES:-true}
+      YAHOO_FALLBACK_TIMEOUT_SECONDS: ${YAHOO_FALLBACK_TIMEOUT_SECONDS:-10}
+      MARKET_DATA_RETENTION_MINUTES: ${MARKET_DATA_RETENTION_MINUTES:-60}
+      MARKET_DATA_CLEANUP_INTERVAL_SECONDS: ${MARKET_DATA_CLEANUP_INTERVAL_SECONDS:-300}
+      MARKET_DATA_STATUS_RETENTION_DAYS: ${MARKET_DATA_STATUS_RETENTION_DAYS:-7}
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  market-data-worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.market_data_worker"]
+    env_file:
+      - .env
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-alpaca}
+      ALPACA_FEED_MODE: ${ALPACA_FEED_MODE:-auto}
+      ALPACA_MAX_SYMBOLS: ${ALPACA_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_ENABLED: ${YAHOO_FALLBACK_ENABLED:-true}
+      YAHOO_FALLBACK_MODE: ${YAHOO_FALLBACK_MODE:-auto}
+      YAHOO_FALLBACK_INTERVAL_SECONDS: ${YAHOO_FALLBACK_INTERVAL_SECONDS:-15}
+      YAHOO_FALLBACK_MAX_SYMBOLS: ${YAHOO_FALLBACK_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_WRITE_CANDLES: ${YAHOO_FALLBACK_WRITE_CANDLES:-true}
+      YAHOO_FALLBACK_TIMEOUT_SECONDS: ${YAHOO_FALLBACK_TIMEOUT_SECONDS:-10}
+      MARKET_DATA_RETENTION_MINUTES: ${MARKET_DATA_RETENTION_MINUTES:-60}
+      MARKET_DATA_CLEANUP_INTERVAL_SECONDS: ${MARKET_DATA_CLEANUP_INTERVAL_SECONDS:-300}
+      MARKET_DATA_STATUS_RETENTION_DAYS: ${MARKET_DATA_STATUS_RETENTION_DAYS:-7}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+    depends_on:
+      - backend
+
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend

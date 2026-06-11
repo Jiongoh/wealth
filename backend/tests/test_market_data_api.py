@@ -1,0 +1,417 @@
+import unittest
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.core.config import Settings
+from app.api.market import get_market_settings
+from app.db.base import Base
+from app.db.session import get_db
+from app.main import create_app
+from app.models import MarketCandle, MarketProviderStatus, MarketQuote
+from app.models.market_data import utc_now
+
+
+def make_settings(alpaca_feed_mode: str = "auto") -> Settings:
+    return Settings(
+        app_name="market-data-api-test",
+        app_version="test",
+        log_level="INFO",
+        cors_origins=[],
+        database_url="sqlite://",
+        raw_xml_dir="/tmp",
+        app_timezone="UTC",
+        ibkr_token="",
+        ibkr_query_id="",
+        ibkr_flex_url="",
+        ibkr_flex_version="3",
+        ibkr_request_timeout_seconds=1.0,
+        ibkr_statement_poll_seconds=0.0,
+        ibkr_statement_poll_attempts=1,
+        sync_cron_hour=0,
+        sync_cron_minute=0,
+        market_data_provider="alpaca",
+        alpaca_feed_mode=alpaca_feed_mode,
+        alpaca_max_symbols=30,
+    )
+
+
+class MarketDataApiTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(self.engine)
+        self.session_factory = sessionmaker(
+            bind=self.engine, autoflush=False, expire_on_commit=False
+        )
+        app = create_app(make_settings())
+
+        def database_override():
+            with self.session_factory() as session:
+                yield session
+
+        app.dependency_overrides[get_db] = database_override
+        app.dependency_overrides[get_market_settings] = lambda: make_settings("iex")
+        self.client = TestClient(app)
+
+    def tearDown(self) -> None:
+        self.engine.dispose()
+
+    def test_market_data_api_returns_empty_without_data(self) -> None:
+        self.assertEqual(self.client.get("/api/market/status").json(), [])
+        self.assertEqual(self.client.get("/api/market/quotes").json(), [])
+        self.assertIsNone(self.client.get("/api/market/quotes/LITE").json())
+        self.assertEqual(
+            self.client.get("/api/market/candles/LITE?timeframe=1m&range=1d").json(),
+            [],
+        )
+
+    def test_market_data_api_reads_local_database(self) -> None:
+        now = utc_now()
+        with self.session_factory() as db:
+            db.add(
+                MarketProviderStatus(
+                    provider="alpaca",
+                    feed="iex",
+                    status="subscribed_no_messages",
+                    message_count=0,
+                    subscribed_symbols=["LITE"],
+                    subscribed_count=1,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    last_price=Decimal("75.50"),
+                    bid_price=Decimal("75.40"),
+                    ask_price=Decimal("75.60"),
+                    last_bar_close=Decimal("75.50"),
+                    updated_at=now,
+                )
+            )
+            db.add(
+                MarketCandle(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    timeframe="1m",
+                    timestamp=now - timedelta(minutes=5),
+                    open=Decimal("75.10"),
+                    high=Decimal("75.70"),
+                    low=Decimal("75.00"),
+                    close=Decimal("75.50"),
+                    volume=Decimal("1200"),
+                    vwap=Decimal("75.30"),
+                )
+            )
+            db.commit()
+
+        status = self.client.get("/api/market/status")
+        quotes = self.client.get("/api/market/quotes")
+        quote = self.client.get("/api/market/quotes/lite")
+        candles = self.client.get("/api/market/candles/lite?timeframe=1m&range=1d")
+
+        self.assertEqual(status.status_code, 200)
+        self.assertEqual(quotes.status_code, 200)
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(candles.status_code, 200)
+        self.assertEqual(status.json()[0]["status"], "subscribed_no_messages")
+        self.assertEqual(quotes.json()[0]["symbol"], "LITE")
+        self.assertEqual(quote.json()["symbol"], "LITE")
+        self.assertEqual(candles.json()[0]["timeframe"], "1m")
+        self.assertEqual(candles.json()[0]["provider"], "alpaca")
+
+    def test_market_quote_prefers_newer_source_timestamp_over_local_write_time(self) -> None:
+        now = utc_now()
+        with self.session_factory() as db:
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    last_price=Decimal("895.55"),
+                    bid_price=Decimal("849.58"),
+                    ask_price=Decimal("907.56"),
+                    last_bar_close=Decimal("895.55"),
+                    source_timestamp=now - timedelta(hours=12),
+                    updated_at=now,
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="overnight",
+                    last_price=Decimal("905.98"),
+                    last_bar_close=Decimal("905.98"),
+                    source_timestamp=now - timedelta(minutes=30),
+                    updated_at=now - timedelta(hours=1),
+                )
+            )
+            db.commit()
+
+        quote = self.client.get("/api/market/quotes/LITE")
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.json()["feed"], "overnight")
+        self.assertEqual(quote.json()["last_price"], "905.98000000")
+        self.assertEqual(quote.json()["active_feed"], "iex")
+        self.assertEqual(quote.json()["data_source"], "latest_available")
+        self.assertTrue(quote.json()["is_stale"])
+
+    def test_market_quote_returns_active_feed_when_recent(self) -> None:
+        now = utc_now()
+        with self.session_factory() as db:
+            db.add(
+                MarketProviderStatus(
+                    provider="alpaca",
+                    feed="iex",
+                    status="connected_receiving",
+                    message_count=10,
+                    subscribed_symbols=["LITE"],
+                    subscribed_count=1,
+                    last_message_at=now,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    last_price=Decimal("75.50"),
+                    source_timestamp=now,
+                    updated_at=now,
+                    raw_payload={"_data_source": "websocket"},
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="overnight",
+                    last_price=Decimal("74.00"),
+                    source_timestamp=now - timedelta(hours=2),
+                    updated_at=now - timedelta(hours=2),
+                    raw_payload={"_data_source": "websocket"},
+                )
+            )
+            db.commit()
+
+        quote = self.client.get("/api/market/quotes/LITE")
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.json()["feed"], "iex")
+        self.assertEqual(quote.json()["active_feed"], "iex")
+        self.assertEqual(quote.json()["data_source"], "websocket")
+        self.assertEqual(quote.json()["status_label"], "realtime")
+        self.assertFalse(quote.json()["is_stale"])
+
+    def test_market_quote_returns_yahoo_fallback_when_alpaca_active_feed_is_stale(self) -> None:
+        now = utc_now()
+        with self.session_factory() as db:
+            db.add(
+                MarketProviderStatus(
+                    provider="alpaca",
+                    feed="iex",
+                    status="subscribed_no_messages",
+                    message_count=0,
+                    subscribed_symbols=["LITE"],
+                    subscribed_count=1,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    last_price=Decimal("75.50"),
+                    source_timestamp=now - timedelta(hours=1),
+                    updated_at=now,
+                    raw_payload={"_data_source": "rest_fallback"},
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="yahoo",
+                    feed="yahoo",
+                    last_price=Decimal("76.25"),
+                    source_timestamp=now,
+                    updated_at=now,
+                    raw_payload={"_data_source": "yahoo_poll"},
+                )
+            )
+            db.commit()
+
+        quote = self.client.get("/api/market/quotes/LITE")
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.json()["provider"], "yahoo")
+        self.assertEqual(quote.json()["feed"], "yahoo")
+        self.assertEqual(quote.json()["active_provider"], "alpaca")
+        self.assertEqual(quote.json()["status_label"], "fallback")
+        self.assertEqual(quote.json()["data_source"], "yahoo_poll")
+        self.assertFalse(quote.json()["is_stale"])
+
+    def test_market_quote_prefers_yahoo_when_yahoo_is_active(self) -> None:
+        import app.api.market as market_api
+
+        now = utc_now()
+        original = market_api.resolve_market_data_route
+        try:
+            market_api.resolve_market_data_route = lambda _mode: type(
+                "Route",
+                (),
+                {
+                    "active_provider": "yahoo",
+                    "active_feed": "yahoo",
+                    "reason": "test yahoo gap",
+                },
+            )()
+            with self.session_factory() as db:
+                db.add(
+                    MarketProviderStatus(
+                        provider="yahoo",
+                        feed="yahoo",
+                        status="polling",
+                        message_count=1,
+                        subscribed_symbols=["LITE"],
+                        subscribed_count=1,
+                        updated_at=now,
+                    )
+                )
+                db.add(
+                    MarketQuote(
+                        symbol="LITE",
+                        provider="yahoo",
+                        feed="yahoo",
+                        last_price=Decimal("76.25"),
+                        source_timestamp=now,
+                        updated_at=now,
+                        raw_payload={"_data_source": "yahoo_poll"},
+                    )
+                )
+                db.add(
+                    MarketQuote(
+                        symbol="LITE",
+                        provider="alpaca",
+                        feed="overnight",
+                        last_price=Decimal("75.00"),
+                        source_timestamp=now,
+                        updated_at=now,
+                        raw_payload={"_data_source": "websocket"},
+                    )
+                )
+                db.commit()
+
+            quote = self.client.get("/api/market/quotes/LITE")
+        finally:
+            market_api.resolve_market_data_route = original
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.json()["provider"], "yahoo")
+        self.assertEqual(quote.json()["active_provider"], "yahoo")
+        self.assertEqual(quote.json()["status_label"], "fallback")
+        self.assertFalse(quote.json()["is_stale"])
+
+    def test_market_quote_returns_overnight_when_overnight_is_active(self) -> None:
+        self.client.app.dependency_overrides[get_market_settings] = lambda: make_settings("overnight")
+        now = utc_now()
+        with self.session_factory() as db:
+            db.add(
+                MarketProviderStatus(
+                    provider="alpaca",
+                    feed="overnight",
+                    status="connected_receiving",
+                    message_count=10,
+                    subscribed_symbols=["LITE"],
+                    subscribed_count=1,
+                    last_message_at=now,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="overnight",
+                    last_price=Decimal("905.98"),
+                    source_timestamp=now,
+                    updated_at=now,
+                    raw_payload={"_data_source": "websocket"},
+                )
+            )
+            db.commit()
+
+        quote = self.client.get("/api/market/quotes/LITE")
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.json()["feed"], "overnight")
+        self.assertEqual(quote.json()["active_feed"], "overnight")
+        self.assertEqual(quote.json()["status_label"], "realtime")
+
+    def test_old_bootstrap_quote_does_not_override_new_live_quote(self) -> None:
+        now = utc_now()
+        with self.session_factory() as db:
+            db.add(
+                MarketProviderStatus(
+                    provider="alpaca",
+                    feed="iex",
+                    status="connected_receiving",
+                    message_count=10,
+                    subscribed_symbols=["LITE"],
+                    subscribed_count=1,
+                    last_message_at=now,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    last_price=Decimal("75.50"),
+                    source_timestamp=now,
+                    updated_at=now - timedelta(minutes=1),
+                    raw_payload={"_data_source": "websocket"},
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="overnight",
+                    last_price=Decimal("80.00"),
+                    source_timestamp=now - timedelta(hours=12),
+                    updated_at=now + timedelta(minutes=1),
+                    raw_payload={"_data_source": "rest_bootstrap"},
+                )
+            )
+            db.commit()
+
+        quote = self.client.get("/api/market/quotes/LITE")
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.json()["feed"], "iex")
+        self.assertEqual(quote.json()["last_price"], "75.50000000")
+
+    def test_market_candles_rejects_unknown_range(self) -> None:
+        response = self.client.get("/api/market/candles/LITE?range=bad")
+
+        self.assertEqual(response.status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()

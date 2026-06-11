@@ -1,0 +1,46 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local database / persistent volumes
+data/
+storage/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+
+# Codegraph / local indexes
+.codegraph/
+
+# Secrets / keys
+*.pem
+*.key
+id_rsa
+id_ed25519
+*.ppk
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Docker local overrides
+docker-compose.override.yml

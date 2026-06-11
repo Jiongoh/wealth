@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FlexQueryResponse type="AF">
+  <FlexStatements count="1">
+    <FlexStatement accountId="TEST_ACCOUNT" fromDate="20260101" toDate="20260131">
+      <OpenPositions>
+        <OpenPosition accountId="TEST_ACCOUNT" reportDate="20260131" currency="USD"
+          assetCategory="STK" symbol="DEMO" description="" conid="1001"
+          position="2.5000000000" markPrice="20.25" positionValue="50.625"
+          costBasisPrice="16.05" costBasisMoney="40.125" fifoPnlUnrealized="10.50" levelOfDetail="LOT"
+          openDateTime="20260102;093000" />
+        <OpenPosition accountId="TEST_ACCOUNT" reportDate="20260131" currency="USD"
+          assetCategory="STK" symbol="DEMO" conid="1001" position="2.5000000000"
+          levelOfDetail="SUMMARY" />
+      </OpenPositions>
+      <Trades>
+        <Trade accountId="TEST_ACCOUNT" reportDate="20260131" assetCategory="STK"
+          symbol="DEMO" conid="1001" dateTime="20260110;101500" tradeDate="20260110" quantity="1"
+          tradePrice="18.50" fifoPnlRealized="" ibExecID="EXEC_TEST_1"
+          levelOfDetail="EXECUTION" />
+        <Trade accountId="TEST_ACCOUNT" reportDate="20260131" assetCategory="STK"
+          symbol="DEMO" conid="1001" tradeDate="20260110" quantity="1" cost="18.50"
+          fifoPnlRealized="1.25" levelOfDetail="CLOSED_LOT" />
+        <Trade accountId="TEST_ACCOUNT" symbol="DEMO" levelOfDetail="ORDER" />
+      </Trades>
+      <CashReport>
+        <CashReportCurrency accountId="TEST_ACCOUNT" currency="USD" levelOfDetail="Currency"
+          fromDate="20260101" toDate="20260131" startingCash="100.00"
+          brokerInterest="" endingCash="125.50" />
+      </CashReport>
+      <EquitySummaryInBase>
+        <EquitySummaryByReportDateInBase accountId="TEST_ACCOUNT" currency="USD"
+          reportDate="20260131" cash="125.50" stock="50.625" total="176.125" />
+      </EquitySummaryInBase>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>
