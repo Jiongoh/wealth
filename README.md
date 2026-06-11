@@ -153,6 +153,16 @@ docker compose exec backend alembic revision --autogenerate -m "describe change"
 
 Then review the generated file before applying it.
 
+More detail is in [docs/database-migrations.md](docs/database-migrations.md).
+
+## Mac Development With Remote PostgreSQL
+
+The Linux VPS can keep PostgreSQL and production data while a Mac clone runs
+local frontend/backend/worker processes through an SSH tunnel. See
+[docs/mac-dev-with-remote-db.md](docs/mac-dev-with-remote-db.md) for the
+database-only Compose file, tunnel command, Mac `DATABASE_URL`, and production
+deployment notes.
+
 ## IBKR Flex Query Sections
 
 The Flex Query must include these sections so the parser can populate the current dashboard:
