@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -39,6 +40,7 @@ def get_trades(
         if not is_fx_conversion_trade(row)
         and _trade_matches_date_range(row, start_date=start_date, end_date=end_date)
     ]
+    filtered_rows = _dedupe_trades_across_reports(filtered_rows)
     filtered_rows.sort(key=_trade_sort_key, reverse=True)
 
     total_count = len(filtered_rows)
@@ -257,6 +259,45 @@ def _latest_raw_report_ids_by_date(
         report_date: raw_flex_report_id
         for report_date, (_, raw_flex_report_id) in latest.items()
     }
+
+
+def _dedupe_trades_across_reports(rows: list[Trade]) -> list[Trade]:
+    """Overlapping Flex reports each carry their own copy of the same execution;
+    keep only the copy from the newest report. Occurrences are counted per
+    report so two genuinely identical fills inside one report both survive.
+    """
+    ordered = sorted(rows, key=lambda row: (row.raw_flex_report_id, row.id), reverse=True)
+    seen: set[tuple[object, ...]] = set()
+    occurrence_by_report: Counter[tuple[int, tuple[object, ...]]] = Counter()
+    kept: list[Trade] = []
+    for row in ordered:
+        identity = _trade_identity(row)
+        report_key = (row.raw_flex_report_id, identity)
+        occurrence_by_report[report_key] += 1
+        dedupe_key = (*identity, occurrence_by_report[report_key])
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        kept.append(row)
+    return kept
+
+
+def _trade_identity(row: Trade) -> tuple[object, ...]:
+    if row.ib_execution_id:
+        return ("exec", row.account_id, row.ib_execution_id, row.level_of_detail)
+    if row.transaction_id:
+        return ("txn", row.account_id, row.transaction_id, row.level_of_detail)
+    return (
+        "fields",
+        row.account_id,
+        row.conid or row.symbol,
+        row.datetime,
+        row.trade_date,
+        row.quantity,
+        row.trade_price,
+        row.buy_sell,
+        row.level_of_detail,
+    )
 
 
 def _validate_date_range(start_date: date | None, end_date: date | None) -> None:

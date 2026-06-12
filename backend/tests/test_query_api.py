@@ -587,6 +587,75 @@ class QueryApiTest(unittest.TestCase):
         self.assertEqual(invalid_range.status_code, 422)
         self.assertEqual(invalid_limit.status_code, 422)
 
+    def test_trades_dedupes_same_execution_across_overlapping_reports(self) -> None:
+        with self.session_factory() as db:
+            first_report = RawFlexReport(
+                query_id="test-query",
+                xml_path="/tmp/first.xml",
+                xml_sha256="first-trades-report",
+                downloaded_at=datetime(2026, 6, 6, tzinfo=UTC),
+                status="parsed",
+            )
+            second_report = RawFlexReport(
+                query_id="test-query",
+                xml_path="/tmp/second.xml",
+                xml_sha256="second-trades-report",
+                downloaded_at=datetime(2026, 6, 8, tzinfo=UTC),
+                status="parsed",
+            )
+            db.add_all([first_report, second_report])
+            db.flush()
+            shared_execution = {
+                "account_id": "TEST_ACCOUNT",
+                "currency": "USD",
+                "asset_class": "STK",
+                "symbol": "MU",
+                "conid": "2002",
+                "datetime": datetime(2026, 6, 5, 14, 30),
+                "trade_date": date(2026, 6, 5),
+                "quantity": Decimal("0.055"),
+                "trade_price": Decimal("914.97"),
+                "buy_sell": "BUY",
+                "transaction_id": "40482724612",
+                "ib_execution_id": "00012971.6a250e38.01.01",
+                "level_of_detail": "EXECUTION",
+            }
+            # Two identical fills inside one report are real separate trades
+            # and must both survive the dedupe.
+            twin_fill = {
+                "account_id": "TEST_ACCOUNT",
+                "currency": "USD",
+                "asset_class": "STK",
+                "symbol": "MU",
+                "conid": "2002",
+                "datetime": datetime(2026, 6, 5, 15, 0),
+                "trade_date": date(2026, 6, 5),
+                "quantity": Decimal("1"),
+                "trade_price": Decimal("900"),
+                "buy_sell": "SELL",
+                "level_of_detail": "EXECUTION",
+            }
+            db.add_all(
+                [
+                    Trade(**shared_execution, report_date=date(2026, 6, 5), raw_flex_report_id=first_report.id),
+                    Trade(**shared_execution, report_date=date(2026, 6, 5), raw_flex_report_id=second_report.id),
+                    Trade(**twin_fill, report_date=date(2026, 6, 5), raw_flex_report_id=second_report.id),
+                    Trade(
+                        **{**twin_fill, "datetime": datetime(2026, 6, 5, 15, 0)},
+                        report_date=date(2026, 6, 5),
+                        raw_flex_report_id=second_report.id,
+                    ),
+                ]
+            )
+            db.commit()
+
+        trades = self.client.get("/api/trades?symbol=MU").json()
+        self.assertEqual(trades["total_count"], 3)
+        self.assertEqual(trades["buy_count"], 1)
+        self.assertEqual(trades["sell_count"], 2)
+        execution_ids = [row["ib_execution_id"] for row in trades["items"] if row["ib_execution_id"]]
+        self.assertEqual(execution_ids, ["00012971.6a250e38.01.01"])
+
     def test_realized_pnl_dedupes_overlapping_reports_and_uses_date_fallback(self) -> None:
         with self.session_factory() as db:
             first_report = RawFlexReport(
