@@ -665,10 +665,10 @@ function PriceLineChart({
         </div>
         {activePoint ? (
           <div
-            className="details-chart-tooltip"
+            className={`details-chart-tooltip${(activePoint.y / chart.height) * 100 < 45 ? " is-below" : ""}`}
             style={{
-              left: `${Math.min(86, Math.max(14, (activePoint.x / chart.width) * 100))}%`,
-              top: `${Math.min(76, Math.max(16, (activePoint.y / chart.height) * 100))}%`,
+              left: `${Math.min(80, Math.max(20, (activePoint.x / chart.width) * 100))}%`,
+              top: `${(activePoint.y / chart.height) * 100}%`,
             }}
           >
             <span>{formatDateTime(activePoint.timestamp)}</span>
@@ -823,7 +823,11 @@ export function TickerDetailsView() {
   const providerFeed = formatProviderFeed(quote?.provider, quote?.feed ?? latestCandle?.feed);
   const activeProviderFeed = formatProviderFeed(quote?.active_provider, quote?.active_feed);
   const quoteStatus = formatStatusLabel(quote?.status_label);
-  const hasBidAsk = quote?.bid_price !== null && quote?.bid_price !== undefined
+  // Yahoo never provides bid/ask, so while the Yahoo fallback route is active
+  // any bid/ask we have is a leftover Alpaca value; hide it instead.
+  const yahooFallbackActive = (quote?.provider ?? "").toLowerCase() === "yahoo";
+  const hasBidAsk = !yahooFallbackActive
+    && quote?.bid_price !== null && quote?.bid_price !== undefined
     && quote?.ask_price !== null && quote?.ask_price !== undefined;
   const bidAskSource = formatProviderFeed(quote?.bid_ask_provider ?? quote?.provider, quote?.bid_ask_feed ?? quote?.feed);
   const bidAskAge = quote?.bid_ask_stale_seconds ?? null;
@@ -859,14 +863,16 @@ export function TickerDetailsView() {
               <div className="details-bid-ask" aria-label="Bid and ask">
                 <span className="details-bid-ask-pair">
                   <span>Bid</span>
-                  <strong>{formatCurrency(quote?.bid_price ?? null)}</strong>
+                  <strong>{hasBidAsk ? formatCurrency(quote?.bid_price ?? null) : "--"}</strong>
                 </span>
                 <span className="details-bid-ask-divider">/</span>
                 <span className="details-bid-ask-pair">
                   <span>Ask</span>
-                  <strong>{formatCurrency(quote?.ask_price ?? null)}</strong>
+                  <strong>{hasBidAsk ? formatCurrency(quote?.ask_price ?? null) : "--"}</strong>
                 </span>
-                {hasBidAsk ? (
+                {yahooFallbackActive ? (
+                  <span className="details-bid-ask-age">Unavailable during Yahoo fallback</span>
+                ) : hasBidAsk ? (
                   <span className={`details-bid-ask-age${bidAskIsOld ? " is-old" : ""}`}>
                     {bidAskSource}
                     {bidAskAge !== null ? ` · ${formatAge(bidAskAge)}` : ""}

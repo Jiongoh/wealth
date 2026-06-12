@@ -550,8 +550,13 @@ h1 {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   margin: 0 18px 18px;
   min-height: 270px;
-  overflow: hidden;
   padding: 16px;
+}
+
+.details-price-chart-canvas,
+.details-chart-x-labels {
+  /* Left gutter that hosts the Y-axis tick labels outside the plot. */
+  margin-left: 52px;
 }
 
 .details-price-chart-canvas {
@@ -637,8 +642,12 @@ h1 {
   padding: 10px 12px;
   pointer-events: none;
   position: absolute;
-  transform: translate(-50%, -105%);
+  transform: translate(-50%, calc(-100% - 14px));
   z-index: 3;
+}
+
+.details-chart-tooltip.is-below {
+  transform: translate(-50%, 16px);
 }
 
 .details-chart-tooltip span {
@@ -662,15 +671,13 @@ h1 {
 }
 
 .details-chart-y-labels span {
-  background: rgba(255, 253, 247, 0.82);
-  border-radius: 6px;
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 700;
-  left: 6px;
-  padding: 1px 5px;
   position: absolute;
-  transform: translateY(-100%);
+  right: calc(100% + 10px);
+  transform: translateY(-50%);
+  white-space: nowrap;
 }
 
 .details-chart-x-labels {
