@@ -15,6 +15,11 @@ def _get_lower_choice(name: str, default: str, choices: set[str]) -> str:
     return value
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    fallback = "true" if default else "false"
+    return os.getenv(name, fallback).lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
@@ -33,6 +38,7 @@ class Settings:
     ibkr_statement_poll_attempts: int
     sync_cron_hour: int
     sync_cron_minute: int
+    enable_sync_scheduler: bool = True
     market_data_provider: str = ""
     alpaca_api_key_id: str = ""
     alpaca_api_secret_key: str = ""
@@ -73,6 +79,7 @@ def get_settings() -> Settings:
         ibkr_statement_poll_attempts=int(os.getenv("IBKR_STATEMENT_POLL_ATTEMPTS", "5")),
         sync_cron_hour=int(os.getenv("SYNC_CRON_HOUR", "8")),
         sync_cron_minute=int(os.getenv("SYNC_CRON_MINUTE", "30")),
+        enable_sync_scheduler=_get_bool("ENABLE_SYNC_SCHEDULER", True),
         market_data_provider=os.getenv("MARKET_DATA_PROVIDER", "").lower(),
         alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID", ""),
         alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY", ""),
@@ -82,12 +89,11 @@ def get_settings() -> Settings:
             {"auto", "iex", "overnight"},
         ),
         alpaca_max_symbols=int(os.getenv("ALPACA_MAX_SYMBOLS", "30")),
-        yahoo_fallback_enabled=os.getenv("YAHOO_FALLBACK_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
+        yahoo_fallback_enabled=_get_bool("YAHOO_FALLBACK_ENABLED", True),
         yahoo_fallback_mode=os.getenv("YAHOO_FALLBACK_MODE", "auto").lower(),
         yahoo_fallback_interval_seconds=int(os.getenv("YAHOO_FALLBACK_INTERVAL_SECONDS", "15")),
         yahoo_fallback_max_symbols=int(os.getenv("YAHOO_FALLBACK_MAX_SYMBOLS", "30")),
-        yahoo_fallback_write_candles=os.getenv("YAHOO_FALLBACK_WRITE_CANDLES", "true").lower()
-        in {"1", "true", "yes", "on"},
+        yahoo_fallback_write_candles=_get_bool("YAHOO_FALLBACK_WRITE_CANDLES", True),
         yahoo_fallback_timeout_seconds=float(os.getenv("YAHOO_FALLBACK_TIMEOUT_SECONDS", "10")),
         market_data_retention_minutes=int(os.getenv("MARKET_DATA_RETENTION_MINUTES", "60")),
         market_data_cleanup_interval_seconds=int(os.getenv("MARKET_DATA_CLEANUP_INTERVAL_SECONDS", "300")),

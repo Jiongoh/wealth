@@ -28,6 +28,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(settings.alpaca_api_secret_key, "")
         self.assertEqual(settings.alpaca_feed_mode, "auto")
         self.assertEqual(settings.alpaca_max_symbols, 30)
+        self.assertTrue(settings.enable_sync_scheduler)
 
     def test_market_data_settings_read_from_environment(self) -> None:
         with patch.dict(
@@ -57,6 +58,14 @@ class ConfigTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "Invalid ALPACA_FEED_MODE"):
                 get_settings()
+
+    def test_sync_scheduler_can_be_disabled_for_local_development(self) -> None:
+        with patch.dict(os.environ, {"ENABLE_SYNC_SCHEDULER": "false"}, clear=True):
+            get_settings.cache_clear()
+
+            settings = get_settings()
+
+        self.assertFalse(settings.enable_sync_scheduler)
 
 
 if __name__ == "__main__":

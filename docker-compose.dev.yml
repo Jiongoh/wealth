@@ -1,0 +1,88 @@
+# Mac/local development compose file.
+# It intentionally does not start PostgreSQL. Keep the SSH tunnel running first:
+# ssh -L 5433:127.0.0.1:5432 root@YOUR_SERVER_IP
+#
+# For Docker Desktop on Mac, containers may need host.docker.internal instead of
+# 127.0.0.1 to reach a tunnel bound on the Mac host. The native venv/npm flow in
+# docs/mac-local-dev.md uses DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5433/DB_NAME.
+
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    environment:
+      APP_NAME: ${APP_NAME:-ibkr-sync}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://USER:PASSWORD@127.0.0.1:5433/DB_NAME}
+      RAW_XML_DIR: ${RAW_XML_DIR:-/app/storage/raw_xml}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Taipei}
+      ENABLE_SYNC_SCHEDULER: ${ENABLE_SYNC_SCHEDULER:-false}
+      IBKR_TOKEN: ${IBKR_TOKEN:-}
+      IBKR_QUERY_ID: ${IBKR_QUERY_ID:-}
+      IBKR_FLEX_URL: ${IBKR_FLEX_URL:-}
+      IBKR_FLEX_VERSION: ${IBKR_FLEX_VERSION:-3}
+      IBKR_REQUEST_TIMEOUT_SECONDS: ${IBKR_REQUEST_TIMEOUT_SECONDS:-30}
+      IBKR_STATEMENT_POLL_SECONDS: ${IBKR_STATEMENT_POLL_SECONDS:-5}
+      IBKR_STATEMENT_POLL_ATTEMPTS: ${IBKR_STATEMENT_POLL_ATTEMPTS:-5}
+      SYNC_CRON_HOUR: ${SYNC_CRON_HOUR:-8}
+      SYNC_CRON_MINUTE: ${SYNC_CRON_MINUTE:-30}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-}
+      ALPACA_API_KEY_ID: ${ALPACA_API_KEY_ID:-}
+      ALPACA_API_SECRET_KEY: ${ALPACA_API_SECRET_KEY:-}
+      ALPACA_FEED_MODE: ${ALPACA_FEED_MODE:-auto}
+      ALPACA_MAX_SYMBOLS: ${ALPACA_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_ENABLED: ${YAHOO_FALLBACK_ENABLED:-false}
+      YAHOO_FALLBACK_MODE: ${YAHOO_FALLBACK_MODE:-auto}
+      YAHOO_FALLBACK_INTERVAL_SECONDS: ${YAHOO_FALLBACK_INTERVAL_SECONDS:-15}
+      YAHOO_FALLBACK_MAX_SYMBOLS: ${YAHOO_FALLBACK_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_WRITE_CANDLES: ${YAHOO_FALLBACK_WRITE_CANDLES:-false}
+      YAHOO_FALLBACK_TIMEOUT_SECONDS: ${YAHOO_FALLBACK_TIMEOUT_SECONDS:-10}
+      MARKET_DATA_RETENTION_MINUTES: ${MARKET_DATA_RETENTION_MINUTES:-60}
+      MARKET_DATA_CLEANUP_INTERVAL_SECONDS: ${MARKET_DATA_CLEANUP_INTERVAL_SECONDS:-300}
+      MARKET_DATA_STATUS_RETENTION_DAYS: ${MARKET_DATA_STATUS_RETENTION_DAYS:-7}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./storage:/app/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8000/api}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8000/api}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - backend
+
+  market-data-worker:
+    profiles:
+      - workers
+    build: ./backend
+    command: ["python", "-m", "app.workers.market_data_worker"]
+    env_file:
+      - .env
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://USER:PASSWORD@127.0.0.1:5433/DB_NAME}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-alpaca}
+      ALPACA_FEED_MODE: ${ALPACA_FEED_MODE:-auto}
+      ALPACA_MAX_SYMBOLS: ${ALPACA_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_ENABLED: ${YAHOO_FALLBACK_ENABLED:-false}
+      YAHOO_FALLBACK_MODE: ${YAHOO_FALLBACK_MODE:-auto}
+      YAHOO_FALLBACK_INTERVAL_SECONDS: ${YAHOO_FALLBACK_INTERVAL_SECONDS:-15}
+      YAHOO_FALLBACK_MAX_SYMBOLS: ${YAHOO_FALLBACK_MAX_SYMBOLS:-30}
+      YAHOO_FALLBACK_WRITE_CANDLES: ${YAHOO_FALLBACK_WRITE_CANDLES:-false}
+      YAHOO_FALLBACK_TIMEOUT_SECONDS: ${YAHOO_FALLBACK_TIMEOUT_SECONDS:-10}
+      MARKET_DATA_RETENTION_MINUTES: ${MARKET_DATA_RETENTION_MINUTES:-60}
+      MARKET_DATA_CLEANUP_INTERVAL_SECONDS: ${MARKET_DATA_CLEANUP_INTERVAL_SECONDS:-300}
+      MARKET_DATA_STATUS_RETENTION_DAYS: ${MARKET_DATA_STATUS_RETENTION_DAYS:-7}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

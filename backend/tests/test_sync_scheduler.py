@@ -32,6 +32,28 @@ def make_settings() -> Settings:
     )
 
 
+def make_settings_without_scheduler() -> Settings:
+    return Settings(
+        app_name="ibkr-scheduler-test",
+        app_version="test",
+        log_level="INFO",
+        cors_origins=[],
+        database_url="sqlite://",
+        raw_xml_dir="/tmp",
+        app_timezone="Asia/Taipei",
+        ibkr_token="",
+        ibkr_query_id="",
+        ibkr_flex_url="",
+        ibkr_flex_version="3",
+        ibkr_request_timeout_seconds=1.0,
+        ibkr_statement_poll_seconds=0.0,
+        ibkr_statement_poll_attempts=1,
+        sync_cron_hour=7,
+        sync_cron_minute=15,
+        enable_sync_scheduler=False,
+    )
+
+
 class FakeScheduler:
     def __init__(self) -> None:
         self.started = False
@@ -76,6 +98,17 @@ class SyncSchedulerTest(unittest.TestCase):
 
         self.assertTrue(scheduler.shutdown_called)
         self.assertFalse(scheduler.shutdown_wait)
+
+    def test_application_lifespan_can_disable_scheduler(self) -> None:
+        scheduler = FakeScheduler()
+        app = create_app(make_settings_without_scheduler(), scheduler_factory=lambda _: scheduler)
+
+        with TestClient(app) as client:
+            self.assertEqual(client.get("/api/health").status_code, 200)
+            self.assertFalse(scheduler.started)
+            self.assertIsNone(client.app.state.scheduler)
+
+        self.assertFalse(scheduler.shutdown_called)
 
     def test_scheduled_sync_skips_when_another_run_holds_lock(self) -> None:
         service = NeverCalledSyncService()

@@ -73,6 +73,7 @@ Application settings:
 | `APP_TIMEZONE` | `Asia/Taipei` | Timezone for scheduled sync. |
 | `SYNC_CRON_HOUR` | `8` | Daily sync hour in `APP_TIMEZONE`. |
 | `SYNC_CRON_MINUTE` | `30` | Daily sync minute in `APP_TIMEZONE`. |
+| `ENABLE_SYNC_SCHEDULER` | `true` | Set to `false` to disable the in-process sync scheduler, e.g. on a Mac dev machine connected to the production database. |
 | `RAW_XML_DIR` | `/app/storage/raw_xml` | Container path for archived raw XML. |
 | `NEXT_PUBLIC_API_BASE_URL` | `/api` | Frontend API base URL. Keep `/api` for same-origin deployment. |
 
@@ -162,6 +163,32 @@ local frontend/backend/worker processes through an SSH tunnel. See
 [docs/mac-dev-with-remote-db.md](docs/mac-dev-with-remote-db.md) for the
 database-only Compose file, tunnel command, Mac `DATABASE_URL`, and production
 deployment notes.
+
+For a step-by-step Mac setup using `.env.mac.example` and
+`docker-compose.dev.yml` (no PostgreSQL, scheduler disabled, optional
+`market-data-worker` behind a profile), see
+[docs/mac-local-dev.md](docs/mac-local-dev.md).
+
+## Deploying To The Linux Server
+
+`deploy.sh` automates the push-then-deploy loop from a developer machine:
+
+```bash
+./deploy.sh
+```
+
+It pushes the current branch to `origin main`, then over SSH runs `git pull`,
+`docker compose up --build -d`, and `docker compose ps` on the server. Edit the
+`SERVER` and `REMOTE_PATH` variables at the top of the script to match your
+server. After the first deploy, or whenever a new Alembic migration is added,
+run migrations explicitly:
+
+```bash
+ssh root@<server> "cd ~/wealth && docker compose exec backend alembic upgrade head"
+```
+
+`deploy.sh` does not run migrations automatically by design; review migration
+files before applying them to the production database.
 
 ## IBKR Flex Query Sections
 

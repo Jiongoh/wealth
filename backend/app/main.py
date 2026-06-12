@@ -19,19 +19,25 @@ def build_lifespan(app_settings: Settings, scheduler_factory=create_sync_schedul
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         logger.info("Starting %s version=%s", app_settings.app_name, app_settings.app_version)
-        scheduler = scheduler_factory(app_settings)
-        scheduler.start()
-        application.state.scheduler = scheduler
-        logger.info(
-            "Sync job schedule checker started: timezone=%s default_time=%02d:%02d",
-            app_settings.app_timezone,
-            app_settings.sync_cron_hour,
-            app_settings.sync_cron_minute,
-        )
+        scheduler = None
+        if app_settings.enable_sync_scheduler:
+            scheduler = scheduler_factory(app_settings)
+            scheduler.start()
+            application.state.scheduler = scheduler
+            logger.info(
+                "Sync job schedule checker started: timezone=%s default_time=%02d:%02d",
+                app_settings.app_timezone,
+                app_settings.sync_cron_hour,
+                app_settings.sync_cron_minute,
+            )
+        else:
+            application.state.scheduler = None
+            logger.info("Sync job schedule checker disabled by ENABLE_SYNC_SCHEDULER=false")
         try:
             yield
         finally:
-            scheduler.shutdown(wait=False)
+            if scheduler is not None:
+                scheduler.shutdown(wait=False)
             logger.info("Stopping %s", app_settings.app_name)
 
     return lifespan
