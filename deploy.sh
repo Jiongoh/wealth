@@ -13,5 +13,8 @@ ssh $SERVER << EOF
   git pull
   docker compose up --build -d
   docker compose ps
+  echo "Cleaning up unused Docker images and build cache.."
+  docker image prune -f
+  docker builder prune -f
   echo "Done!"
 EOF
