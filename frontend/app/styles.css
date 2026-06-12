@@ -507,29 +507,29 @@ h1 {
 }
 
 .details-grid {
+  align-items: stretch;
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
   margin-bottom: 20px;
 }
 
-.details-market-meta {
-  align-items: flex-end;
+.details-market-panel,
+.details-position-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  justify-content: center;
 }
 
-.details-market-meta span {
-  background: rgba(248, 241, 227, 0.78);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  color: #6f5b3d;
-  font-size: 12px;
-  font-weight: 720;
-  padding: 8px 11px;
-  white-space: nowrap;
+.details-position-panel .details-position-list {
+  align-content: space-between;
+  flex: 1;
+}
+
+.details-position-panel .details-panel-state {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  justify-content: center;
 }
 
 .details-refresh-warning {

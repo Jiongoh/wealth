@@ -189,10 +189,17 @@ function formatDateTime(value: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) {
     return "--";
   }
-  return date.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
+  const datePart = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
+  const timePart = date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${datePart} ${timePart}`;
 }
 
 function formatTime(value: string | number | null | undefined): string {
@@ -652,7 +659,7 @@ function PriceLineChart({
         <div className="details-chart-y-labels" aria-hidden="true">
           {chart.yTicks.map((tick) => (
             <span key={`y-label-${tick.value}`} style={{ top: `${tick.yPercent}%` }}>
-              {formatCurrency(tick.value)}
+              {formatNumber(tick.value)}
             </span>
           ))}
         </div>
@@ -816,7 +823,6 @@ export function TickerDetailsView() {
   const providerFeed = formatProviderFeed(quote?.provider, quote?.feed ?? latestCandle?.feed);
   const activeProviderFeed = formatProviderFeed(quote?.active_provider, quote?.active_feed);
   const quoteStatus = formatStatusLabel(quote?.status_label);
-  const marketUpdatedAt = liveQuoteTimestamp ?? latestCandle?.timestamp ?? refreshState.lastRefreshedAt;
   const hasBidAsk = quote?.bid_price !== null && quote?.bid_price !== undefined
     && quote?.ask_price !== null && quote?.ask_price !== undefined;
   const bidAskSource = formatProviderFeed(quote?.bid_ask_provider ?? quote?.provider, quote?.bid_ask_feed ?? quote?.feed);
@@ -848,7 +854,7 @@ export function TickerDetailsView() {
         <>
           <section className="details-hero panel">
             <div className="details-hero-main">
-              <span className="details-symbol">{PILOT_SYMBOL}</span>
+              <span className="details-symbol">Current Price</span>
               <strong>{quote ? formatCurrency(latestPrice) : "Latest data unavailable"}</strong>
               <div className="details-bid-ask" aria-label="Bid and ask">
                 <span className="details-bid-ask-pair">
@@ -884,12 +890,8 @@ export function TickerDetailsView() {
               <MarketDataBoundary candlesCount={candles.length} fallbackCandles={candles} quoteExists={quote !== null}>
                 <div className="panel-header">
                   <div>
-                    <h2>1m Market Data</h2>
-                    <p>1m candle closes with latest quote as the live price point.</p>
-                  </div>
-                  <div className="details-market-meta">
-                    <span>{providerFeed}</span>
-                    <span>Updated {formatDateTime(marketUpdatedAt)}</span>
+                    <h2>Price Chart</h2>
+                    <p>1-minute price action for the last hour, including the latest live quote.</p>
                   </div>
                 </div>
                 {refreshState.warning ? (
