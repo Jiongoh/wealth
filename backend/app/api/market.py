@@ -89,8 +89,10 @@ def get_market_quote(
         .where(MarketProviderStatus.feed == route.active_feed)
     )
     selected = _select_market_quote(active_quote=active_quote, yahoo_quote=yahoo_quote, latest_available=latest_available)
+    bid_ask_quote = _select_bid_ask_quote(selected, quotes)
     return _quote_response(
         selected,
+        bid_ask_quote=bid_ask_quote,
         active_provider=route.active_provider,
         active_feed=route.active_feed,
         active_status=active_status,
@@ -111,7 +113,7 @@ def get_market_candles(
         return []
 
     start_at = utc_now() - _range_delta(range_value)
-    return list(
+    rows = list(
         db.scalars(
             select(MarketCandle)
             .where(MarketCandle.symbol == normalized_symbol)
@@ -120,6 +122,29 @@ def get_market_candles(
             .order_by(MarketCandle.timestamp.asc(), MarketCandle.provider.asc(), MarketCandle.feed.asc())
         ).all()
     )
+    return _dedupe_candles(rows)
+
+
+def _dedupe_candles(rows: list[MarketCandle]) -> list[MarketCandle]:
+    """Keep one candle per timestamp when multiple providers cover the same minute.
+
+    Alpaca data is preferred over Yahoo fallback; ties go to the most
+    recently updated row.
+    """
+    best: dict[datetime, MarketCandle] = {}
+    for row in rows:
+        existing = best.get(row.timestamp)
+        if existing is None or _candle_priority(row) > _candle_priority(existing):
+            best[row.timestamp] = row
+    return sorted(best.values(), key=lambda row: row.timestamp)
+
+
+def _candle_priority(row: MarketCandle) -> tuple[int, datetime]:
+    provider_rank = 1 if row.provider == "alpaca" else 0
+    updated = row.updated_at
+    if updated is not None and updated.tzinfo is None:
+        updated = updated.replace(tzinfo=UTC)
+    return (provider_rank, updated or datetime.min.replace(tzinfo=UTC))
 
 
 @router.get("/subscriptions/preview")
@@ -162,6 +187,7 @@ def _range_delta(value: str) -> timedelta:
 def _quote_response(
     quote: MarketQuote,
     *,
+    bid_ask_quote: MarketQuote | None,
     active_provider: str,
     active_feed: str,
     active_status: MarketProviderStatus | None,
@@ -202,6 +228,7 @@ def _quote_response(
     else:
         status_label = "stale"
 
+    bid_ask_timestamp = _bid_ask_timestamp(bid_ask_quote) if bid_ask_quote is not None else None
     return {
         "symbol": quote.symbol,
         "provider": quote.provider,
@@ -210,8 +237,12 @@ def _quote_response(
         "feed": quote.feed,
         "market_session": quote.market_session,
         "last_price": quote.last_price,
-        "bid_price": quote.bid_price,
-        "ask_price": quote.ask_price,
+        "bid_price": bid_ask_quote.bid_price if bid_ask_quote is not None else None,
+        "ask_price": bid_ask_quote.ask_price if bid_ask_quote is not None else None,
+        "bid_ask_provider": bid_ask_quote.provider if bid_ask_quote is not None else None,
+        "bid_ask_feed": bid_ask_quote.feed if bid_ask_quote is not None else None,
+        "bid_ask_timestamp": bid_ask_timestamp,
+        "bid_ask_stale_seconds": _stale_seconds(bid_ask_timestamp, now),
         "last_bar_close": quote.last_bar_close,
         "source_timestamp": source_timestamp,
         "updated_at": quote.updated_at,
@@ -221,6 +252,51 @@ def _quote_response(
         "status_label": status_label,
         "reason": reason,
     }
+
+
+def _select_bid_ask_quote(selected: MarketQuote, quotes: list[MarketQuote]) -> MarketQuote | None:
+    """Pick the row whose bid/ask should be displayed.
+
+    The selected quote may come from a provider that never carries bid/ask
+    (e.g. Yahoo); in that case fall back to the freshest row that has both
+    sides so the UI can show the last known book with its real age.
+    """
+    if selected.bid_price is not None and selected.ask_price is not None:
+        return selected
+    candidates = [quote for quote in quotes if quote.bid_price is not None and quote.ask_price is not None]
+    if not candidates:
+        return selected if selected.bid_price is not None or selected.ask_price is not None else None
+    return max(
+        candidates,
+        key=lambda quote: _bid_ask_timestamp(quote) or datetime.min.replace(tzinfo=UTC),
+    )
+
+
+def _bid_ask_timestamp(quote: MarketQuote) -> datetime | None:
+    payload = quote.raw_payload
+    if isinstance(payload, dict):
+        value = payload.get("_bid_ask_timestamp")
+        if isinstance(value, str):
+            try:
+                parsed = datetime.fromisoformat(value)
+            except ValueError:
+                parsed = None
+            if parsed is not None:
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+        # Older rows written before _bid_ask_timestamp existed: an Alpaca
+        # quote message's own timestamp covers its bid/ask.
+        if payload.get("T") == "q":
+            raw_t = payload.get("t")
+            if isinstance(raw_t, str):
+                try:
+                    parsed = datetime.fromisoformat(raw_t.replace("Z", "+00:00"))
+                    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+                except ValueError:
+                    pass
+    if quote.source_timestamp is not None:
+        source = quote.source_timestamp
+        return source if source.tzinfo else source.replace(tzinfo=UTC)
+    return None
 
 
 def _select_market_quote(

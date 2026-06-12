@@ -30,6 +30,10 @@ class MarketQuoteResponse(BaseModel):
     last_price: Decimal | None
     bid_price: Decimal | None
     ask_price: Decimal | None
+    bid_ask_provider: str | None = None
+    bid_ask_feed: str | None = None
+    bid_ask_timestamp: datetime | None = None
+    bid_ask_stale_seconds: int | None = None
     last_bar_close: Decimal | None
     source_timestamp: datetime | None = None
     updated_at: datetime

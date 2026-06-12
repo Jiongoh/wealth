@@ -206,6 +206,139 @@ class MarketDataWorkerTest(unittest.TestCase):
             self.assertEqual(quote.bid_size, Decimal("2.00000000"))
             self.assertEqual(quote.ask_size, Decimal("3.00000000"))
 
+    def test_bar_does_not_regress_quote_source_timestamp(self) -> None:
+        with self.session_factory() as db:
+            _store_market_message(
+                db,
+                provider="alpaca",
+                feed="iex",
+                message={
+                    "T": "q",
+                    "S": "LITE",
+                    "bp": 75.40,
+                    "bs": 2,
+                    "ap": 75.60,
+                    "as": 3,
+                    "t": "2026-06-08T14:30:58Z",
+                },
+            )
+            # Minute bar stamped at the start of the same minute arrives later.
+            _store_market_message(
+                db,
+                provider="alpaca",
+                feed="iex",
+                message={
+                    "T": "b",
+                    "S": "LITE",
+                    "o": 75.1,
+                    "h": 75.7,
+                    "l": 75.0,
+                    "c": 75.5,
+                    "v": 1200,
+                    "t": "2026-06-08T14:30:00Z",
+                },
+            )
+            # A quote between the bar stamp and the previous quote must not be dropped.
+            result = _store_market_message(
+                db,
+                provider="alpaca",
+                feed="iex",
+                message={
+                    "T": "q",
+                    "S": "LITE",
+                    "bp": 75.45,
+                    "bs": 1,
+                    "ap": 75.55,
+                    "as": 1,
+                    "t": "2026-06-08T14:31:05Z",
+                },
+            )
+            self.assertEqual(result, "quote")
+
+        with self.session_factory() as db:
+            quote = db.scalar(select(MarketQuote).where(MarketQuote.symbol == "LITE"))
+            self.assertEqual(quote.bid_price, Decimal("75.45000000"))
+            self.assertEqual(quote.ask_price, Decimal("75.55000000"))
+            self.assertEqual(quote.last_price, Decimal("75.50000000"))
+            self.assertEqual(
+                quote.source_timestamp.replace(tzinfo=UTC),
+                datetime(2026, 6, 8, 14, 31, 5, tzinfo=UTC),
+            )
+            self.assertEqual(quote.raw_payload.get("_bid_ask_timestamp"), "2026-06-08T14:31:05+00:00")
+
+    def test_quote_without_bid_ask_carries_forward_bid_ask_timestamp(self) -> None:
+        with self.session_factory() as db:
+            _store_market_message(
+                db,
+                provider="alpaca",
+                feed="iex",
+                message={
+                    "T": "q",
+                    "S": "LITE",
+                    "bp": 75.40,
+                    "ap": 75.60,
+                    "t": "2026-06-08T14:30:00Z",
+                },
+            )
+            _store_market_message(
+                db,
+                provider="alpaca",
+                feed="iex",
+                message={
+                    "T": "q",
+                    "S": "LITE",
+                    "bp": 0,
+                    "ap": 0,
+                    "t": "2026-06-08T14:35:00Z",
+                },
+            )
+
+        with self.session_factory() as db:
+            quote = db.scalar(select(MarketQuote).where(MarketQuote.symbol == "LITE"))
+            self.assertEqual(quote.bid_price, Decimal("75.40000000"))
+            self.assertEqual(quote.raw_payload.get("_bid_ask_timestamp"), "2026-06-08T14:30:00+00:00")
+
+    def test_yahoo_quote_without_bid_ask_keeps_existing_values(self) -> None:
+        from app.services.yahoo_provider import YahooQuote
+        from app.workers.market_data_worker import _upsert_yahoo_quote
+
+        earlier = datetime(2026, 6, 8, 14, 30, tzinfo=UTC)
+        later = datetime(2026, 6, 8, 14, 31, tzinfo=UTC)
+        with self.session_factory() as db:
+            _upsert_yahoo_quote(
+                db,
+                YahooQuote(
+                    symbol="LITE",
+                    last_price=Decimal("75.50"),
+                    bid_price=Decimal("75.40"),
+                    ask_price=Decimal("75.60"),
+                    source_timestamp=earlier,
+                    data_source="yahoo_poll",
+                    raw_payload={},
+                ),
+            )
+            db.commit()
+            _upsert_yahoo_quote(
+                db,
+                YahooQuote(
+                    symbol="LITE",
+                    last_price=Decimal("75.70"),
+                    bid_price=None,
+                    ask_price=None,
+                    source_timestamp=later,
+                    data_source="yahoo_poll",
+                    raw_payload={},
+                ),
+            )
+            db.commit()
+
+        with self.session_factory() as db:
+            quote = db.scalar(select(MarketQuote).where(MarketQuote.symbol == "LITE"))
+            self.assertEqual(quote.last_price, Decimal("75.70000000"))
+            self.assertEqual(quote.bid_price, Decimal("75.40000000"))
+            self.assertEqual(quote.ask_price, Decimal("75.60000000"))
+            self.assertEqual(quote.raw_payload.get("_bid_ask_timestamp"), "2026-06-08T14:30:00+00:00")
+
     def test_latest_payload_messages_adds_type_and_symbol(self) -> None:
         messages = _latest_payload_messages(
             {"quotes": {"aapl": {"bp": 100, "ap": 101, "t": "2026-06-08T14:30:01Z"}}},

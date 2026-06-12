@@ -334,6 +334,10 @@ export type MarketQuote = {
   last_price: DecimalValue;
   bid_price: DecimalValue;
   ask_price: DecimalValue;
+  bid_ask_provider?: string | null;
+  bid_ask_feed?: string | null;
+  bid_ask_timestamp?: string | null;
+  bid_ask_stale_seconds?: number | null;
   last_bar_close: DecimalValue;
   source_timestamp?: string | null;
   updated_at: string;

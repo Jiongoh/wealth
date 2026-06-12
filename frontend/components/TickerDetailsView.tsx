@@ -8,6 +8,7 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { EmptyState } from "@/components/EmptyState";
@@ -46,6 +47,10 @@ type NormalizedMarketQuote = Omit<
   last_bar_close: number | null;
   last_price: number | null;
   active_feed?: string | null;
+  bid_ask_provider?: string | null;
+  bid_ask_feed?: string | null;
+  bid_ask_timestamp?: string | null;
+  bid_ask_stale_seconds?: number | null;
   data_source?: string | null;
   is_stale?: boolean;
   source_timestamp?: string | null;
@@ -149,25 +154,31 @@ function formatProviderFeed(provider: string | null | undefined, feed: string | 
   const providerLabel = formatFeed(provider);
   const feedLabel = formatFeed(feed);
   if (providerLabel === "YAHOO") {
-    return "YAHOO FALLBACK";
+    return "YAHOO";
   }
   if (providerLabel === "--") {
     return feedLabel;
   }
+  if (providerLabel === feedLabel) {
+    return providerLabel;
+  }
   return `${providerLabel} ${feedLabel}`;
 }
 
-function formatStaleAge(seconds: number | null | undefined): string {
+function formatAge(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
     return "--";
   }
   if (seconds < 60) {
-    return `${Math.max(0, Math.round(seconds))}s old`;
+    return `${Math.max(0, Math.round(seconds))}s ago`;
   }
   if (seconds < 3600) {
-    return `${Math.round(seconds / 60)}m old`;
+    return `${Math.round(seconds / 60)}m ago`;
   }
-  return `${Math.round(seconds / 3600)}h old`;
+  if (seconds < 86_400) {
+    return `${Math.round(seconds / 3600)}h ago`;
+  }
+  return `${Math.round(seconds / 86_400)}d ago`;
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -184,8 +195,8 @@ function formatDateTime(value: string | null | undefined): string {
   });
 }
 
-function formatTime(value: string | null | undefined): string {
-  if (!value) {
+function formatTime(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === "") {
     return "--";
   }
   const date = new Date(value);
@@ -235,6 +246,13 @@ function normalizeQuote(value: unknown): NormalizedMarketQuote | null {
     last_price: marketPriceNumber(row.last_price),
     bid_price: marketPriceNumber(row.bid_price),
     ask_price: marketPriceNumber(row.ask_price),
+    bid_ask_provider: typeof row.bid_ask_provider === "string" ? row.bid_ask_provider : null,
+    bid_ask_feed: typeof row.bid_ask_feed === "string" ? row.bid_ask_feed : null,
+    bid_ask_timestamp: validTimestamp(row.bid_ask_timestamp) ?? null,
+    bid_ask_stale_seconds:
+      typeof row.bid_ask_stale_seconds === "number" && Number.isFinite(row.bid_ask_stale_seconds)
+        ? row.bid_ask_stale_seconds
+        : null,
     last_bar_close: marketPriceNumber(row.last_bar_close),
     data_source: typeof row.data_source === "string" ? row.data_source : null,
     is_stale: row.is_stale === true,
@@ -365,29 +383,6 @@ function liveQuotePrice(quote: NormalizedMarketQuote | null): number | null {
   return null;
 }
 
-function sameLiveQuotePrice(
-  previousQuote: NormalizedMarketQuote | null,
-  nextQuote: NormalizedMarketQuote | null,
-): boolean {
-  const previousPrice = liveQuotePrice(previousQuote);
-  const nextPrice = liveQuotePrice(nextQuote);
-  return previousPrice !== null && nextPrice !== null && Math.abs(previousPrice - nextPrice) < 0.000001;
-}
-
-function preserveChartTimestampWhenPriceUnchanged(
-  previousQuote: NormalizedMarketQuote | null,
-  nextQuote: NormalizedMarketQuote | null,
-): NormalizedMarketQuote | null {
-  if (!previousQuote || !nextQuote || !sameLiveQuotePrice(previousQuote, nextQuote)) {
-    return nextQuote;
-  }
-  return {
-    ...nextQuote,
-    source_timestamp: previousQuote.source_timestamp ?? null,
-    updated_at: previousQuote.updated_at,
-  };
-}
-
 function mergeMarketChartPoints(
   candles: NormalizedMarketCandle[],
   quote: NormalizedMarketQuote | null,
@@ -442,6 +437,53 @@ function mergeMarketChartPoints(
   return points;
 }
 
+const PRICE_STEP_MULTIPLIERS = [1, 2, 2.5, 5, 10];
+const TIME_STEP_MINUTES = [1, 2, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440];
+
+function nicePriceStep(rawStep: number): number {
+  if (!Number.isFinite(rawStep) || rawStep <= 0) {
+    return 1;
+  }
+  const power = 10 ** Math.floor(Math.log10(rawStep));
+  for (const multiplier of PRICE_STEP_MULTIPLIERS) {
+    if (multiplier * power >= rawStep) {
+      return multiplier * power;
+    }
+  }
+  return 10 * power;
+}
+
+function priceTickValues(min: number, max: number, targetCount = 4): number[] {
+  const span = max - min;
+  if (!Number.isFinite(span) || span <= 0) {
+    return [];
+  }
+  const step = nicePriceStep(span / targetCount);
+  const first = Math.ceil(min / step) * step;
+  const ticks: number[] = [];
+  for (let value = first; value <= max + step * 1e-6; value += step) {
+    ticks.push(Number(value.toFixed(6)));
+  }
+  return ticks;
+}
+
+function timeTickValues(minTime: number, maxTime: number, targetCount = 5): number[] {
+  const spanMinutes = (maxTime - minTime) / 60_000;
+  if (!Number.isFinite(spanMinutes) || spanMinutes <= 0) {
+    return [];
+  }
+  const stepMinutes =
+    TIME_STEP_MINUTES.find((candidate) => spanMinutes / candidate <= targetCount) ??
+    TIME_STEP_MINUTES[TIME_STEP_MINUTES.length - 1];
+  const stepMs = stepMinutes * 60_000;
+  const first = Math.ceil(minTime / stepMs) * stepMs;
+  const ticks: number[] = [];
+  for (let time = first; time <= maxTime; time += stepMs) {
+    ticks.push(time);
+  }
+  return ticks;
+}
+
 function PriceLineChart({
   candles,
   feed,
@@ -461,9 +503,9 @@ function PriceLineChart({
 
     const width = 720;
     const height = 280;
-    const paddingX = 38;
-    const paddingTop = 24;
-    const paddingBottom = 34;
+    const paddingX = 14;
+    const paddingTop = 18;
+    const paddingBottom = 14;
     const rawMinPrice = Math.min(...points.map((point) => point.price));
     const rawMaxPrice = Math.max(...points.map((point) => point.price));
     const rawSpread = rawMaxPrice - rawMinPrice;
@@ -478,15 +520,16 @@ function PriceLineChart({
     const timeSpread = maxTime - minTime || 1;
     const plotWidth = width - paddingX * 2;
     const plotHeight = height - paddingTop - paddingBottom;
-    const plottedPoints = points
-      .map((point, index) => {
-        const x =
-          maxTime === minTime
-            ? paddingX + (index / Math.max(points.length - 1, 1)) * plotWidth
-            : paddingX + ((point.time - minTime) / timeSpread) * plotWidth;
-        const y = paddingTop + (1 - (point.price - minPrice) / priceSpread) * plotHeight;
-        return { ...point, x, y };
-      });
+    const xForTime = (time: number, index = 0) =>
+      maxTime === minTime
+        ? paddingX + (index / Math.max(points.length - 1, 1)) * plotWidth
+        : paddingX + ((time - minTime) / timeSpread) * plotWidth;
+    const yForPrice = (price: number) => paddingTop + (1 - (price - minPrice) / priceSpread) * plotHeight;
+    const plottedPoints = points.map((point, index) => ({
+      ...point,
+      x: xForTime(point.time, index),
+      y: yForPrice(point.price),
+    }));
     const line = plottedPoints.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
     const area = [
       `M ${plottedPoints[0].x.toFixed(2)} ${(height - paddingBottom).toFixed(2)}`,
@@ -494,16 +537,28 @@ function PriceLineChart({
       `L ${plottedPoints[plottedPoints.length - 1].x.toFixed(2)} ${(height - paddingBottom).toFixed(2)}`,
       "Z",
     ].join(" ");
+    const yTicks = priceTickValues(minPrice, maxPrice).map((value) => ({
+      value,
+      y: yForPrice(value),
+      yPercent: (yForPrice(value) / height) * 100,
+    }));
+    const xTicks = timeTickValues(minTime, maxTime).map((time) => ({
+      time,
+      x: xForTime(time),
+      xPercent: (xForTime(time) / width) * 100,
+    }));
 
     return {
       area,
-      endLabel: formatTime(points[points.length - 1].timestamp),
       latestPoint: points[points.length - 1],
       line,
-      maxPrice,
-      minPrice,
+      plotBottom: height - paddingBottom,
+      plotTop: paddingTop,
+      plotLeft: paddingX,
+      plotRight: width - paddingX,
       points: plottedPoints,
-      startLabel: formatTime(points[0].timestamp),
+      xTicks,
+      yTicks,
       width,
       height,
     };
@@ -553,8 +608,26 @@ function PriceLineChart({
               <stop offset="100%" stopColor="#d49a1f" stopOpacity="0" />
             </linearGradient>
           </defs>
-          <line className="details-chart-grid-line" x1="38" x2="682" y1="24" y2="24" />
-          <line className="details-chart-grid-line" x1="38" x2="682" y1="246" y2="246" />
+          {chart.yTicks.map((tick) => (
+            <line
+              key={`y-${tick.value}`}
+              className="details-chart-grid-line"
+              x1={chart.plotLeft}
+              x2={chart.plotRight}
+              y1={tick.y}
+              y2={tick.y}
+            />
+          ))}
+          {chart.xTicks.map((tick) => (
+            <line
+              key={`x-${tick.time}`}
+              className="details-chart-grid-line"
+              x1={tick.x}
+              x2={tick.x}
+              y1={chart.plotTop}
+              y2={chart.plotBottom}
+            />
+          ))}
           <path className="details-chart-area" d={chart.area} />
           <polyline className="details-chart-line" points={chart.line} />
           <circle
@@ -569,13 +642,20 @@ function PriceLineChart({
                 className="details-chart-hover-line"
                 x1={activePoint.x}
                 x2={activePoint.x}
-                y1="24"
-                y2="246"
+                y1={chart.plotTop}
+                y2={chart.plotBottom}
               />
               <circle className="details-chart-hover-marker" cx={activePoint.x} cy={activePoint.y} r="5" />
             </>
           ) : null}
         </svg>
+        <div className="details-chart-y-labels" aria-hidden="true">
+          {chart.yTicks.map((tick) => (
+            <span key={`y-label-${tick.value}`} style={{ top: `${tick.yPercent}%` }}>
+              {formatCurrency(tick.value)}
+            </span>
+          ))}
+        </div>
         {activePoint ? (
           <div
             className="details-chart-tooltip"
@@ -592,11 +672,12 @@ function PriceLineChart({
           </div>
         ) : null}
       </div>
-      <div className="details-chart-axis">
-        <span>{formatCurrency(chart.minPrice)}</span>
-        <span>{chart.startLabel}</span>
-        <span>{chart.endLabel}</span>
-        <span>{formatCurrency(chart.maxPrice)}</span>
+      <div className="details-chart-x-labels" aria-hidden="true">
+        {chart.xTicks.map((tick) => (
+          <span key={`x-label-${tick.time}`} style={{ left: `${tick.xPercent}%` }}>
+            {formatTime(tick.time)}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -609,9 +690,16 @@ export function TickerDetailsView() {
     lastRefreshedAt: null,
     warning: null,
   });
+  const dataRef = useRef<DetailsData | null>(null);
+  dataRef.current = data;
 
   useEffect(() => {
     let active = true;
+    // Monotonic counters drop out-of-order responses when a slow request
+    // resolves after a newer one.
+    let quoteSeq = 0;
+    let candleSeq = 0;
+    let loadingAll = false;
 
     const markRefreshSuccess = () => {
       setRefreshState({
@@ -627,14 +715,20 @@ export function TickerDetailsView() {
       }));
     };
 
-    const loadInitialData = async () => {
+    const loadAll = async () => {
+      if (loadingAll) {
+        return;
+      }
+      loadingAll = true;
+      const quoteRequest = ++quoteSeq;
+      const candleRequest = ++candleSeq;
       try {
         const [quote, candles, positions] = await Promise.all([
           api.marketQuote(PILOT_SYMBOL),
           api.marketCandles(PILOT_SYMBOL, { timeframe: "1m", range: "1h" }),
           api.positions(),
         ]);
-        if (!active) {
+        if (!active || quoteRequest !== quoteSeq || candleRequest !== candleSeq) {
           return;
         }
         const normalizedPositions = normalizePositions(positions);
@@ -647,27 +741,33 @@ export function TickerDetailsView() {
         setError(null);
         markRefreshSuccess();
       } catch (requestError) {
-        if (active) {
-          setError(requestError instanceof Error ? requestError.message : "Request failed.");
+        if (!active) {
+          return;
         }
+        if (dataRef.current === null) {
+          setError(requestError instanceof Error ? requestError.message : "Request failed.");
+        } else {
+          markRefreshFailure(requestError);
+        }
+      } finally {
+        loadingAll = false;
       }
     };
 
     const refreshQuote = async () => {
+      if (dataRef.current === null) {
+        // Initial load failed; retry the whole page instead of a partial refresh.
+        void loadAll();
+        return;
+      }
+      const request = ++quoteSeq;
       try {
         const quote = await api.marketQuote(PILOT_SYMBOL);
-        if (!active) {
+        if (!active || request !== quoteSeq) {
           return;
         }
         const normalizedQuote = normalizeQuote(quote);
-        setData((current) =>
-          current
-            ? {
-                ...current,
-                quote: preserveChartTimestampWhenPriceUnchanged(current.quote, normalizedQuote),
-              }
-            : current,
-        );
+        setData((current) => (current ? { ...current, quote: normalizedQuote } : current));
         markRefreshSuccess();
       } catch (requestError) {
         if (active) {
@@ -677,9 +777,13 @@ export function TickerDetailsView() {
     };
 
     const refreshCandles = async () => {
+      if (dataRef.current === null) {
+        return;
+      }
+      const request = ++candleSeq;
       try {
         const candles = await api.marketCandles(PILOT_SYMBOL, { timeframe: "1m", range: "1h" });
-        if (!active) {
+        if (!active || request !== candleSeq) {
           return;
         }
         setData((current) => (current ? { ...current, candles: normalizeCandles(candles) } : current));
@@ -691,7 +795,7 @@ export function TickerDetailsView() {
       }
     };
 
-    loadInitialData();
+    void loadAll();
     const quoteInterval = window.setInterval(refreshQuote, QUOTE_REFRESH_MS);
     const candleInterval = window.setInterval(refreshCandles, CANDLE_REFRESH_MS);
 
@@ -706,15 +810,18 @@ export function TickerDetailsView() {
   const candles = data?.candles ?? [];
   const position = data?.position ?? null;
   const latestPrice = quote?.last_price ?? quote?.last_bar_close ?? null;
-  const sessionLabel = quote?.market_session ?? (quote ? "latest available" : "--");
   const latestCandle = candles.at(-1);
   const liveQuoteTimestamp = quote?.source_timestamp ?? quote?.updated_at ?? null;
   const marketFeed = formatFeed(quote?.feed ?? latestCandle?.feed);
   const providerFeed = formatProviderFeed(quote?.provider, quote?.feed ?? latestCandle?.feed);
-  const activeFeed = formatFeed(quote?.active_feed);
   const activeProviderFeed = formatProviderFeed(quote?.active_provider, quote?.active_feed);
   const quoteStatus = formatStatusLabel(quote?.status_label);
   const marketUpdatedAt = liveQuoteTimestamp ?? latestCandle?.timestamp ?? refreshState.lastRefreshedAt;
+  const hasBidAsk = quote?.bid_price !== null && quote?.bid_price !== undefined
+    && quote?.ask_price !== null && quote?.ask_price !== undefined;
+  const bidAskSource = formatProviderFeed(quote?.bid_ask_provider ?? quote?.provider, quote?.bid_ask_feed ?? quote?.feed);
+  const bidAskAge = quote?.bid_ask_stale_seconds ?? null;
+  const bidAskIsOld = bidAskAge !== null && bidAskAge > 120;
 
   return (
     <>
@@ -743,17 +850,32 @@ export function TickerDetailsView() {
             <div className="details-hero-main">
               <span className="details-symbol">{PILOT_SYMBOL}</span>
               <strong>{quote ? formatCurrency(latestPrice) : "Latest data unavailable"}</strong>
-              <span>
-                Bid {formatCurrency(quote?.bid_price ?? null)} / Ask {formatCurrency(quote?.ask_price ?? null)}
-              </span>
+              <div className="details-bid-ask" aria-label="Bid and ask">
+                <span className="details-bid-ask-pair">
+                  <span>Bid</span>
+                  <strong>{formatCurrency(quote?.bid_price ?? null)}</strong>
+                </span>
+                <span className="details-bid-ask-divider">/</span>
+                <span className="details-bid-ask-pair">
+                  <span>Ask</span>
+                  <strong>{formatCurrency(quote?.ask_price ?? null)}</strong>
+                </span>
+                {hasBidAsk ? (
+                  <span className={`details-bid-ask-age${bidAskIsOld ? " is-old" : ""}`}>
+                    {bidAskSource}
+                    {bidAskAge !== null ? ` · ${formatAge(bidAskAge)}` : ""}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div className="details-hero-meta" aria-label="Market data status">
-              <span>Active {activeProviderFeed}</span>
-              <span>Feed {providerFeed}</span>
-              <span>{quoteStatus}</span>
-              {quote?.is_stale ? <span>{formatStaleAge(quote.stale_seconds)}</span> : null}
-              <span>Updated {formatDateTime(quote?.updated_at)}</span>
-              <span>{sessionLabel}</span>
+              <span>
+                Status: {quoteStatus}
+                {quote?.is_stale && quote.stale_seconds !== null ? ` (${formatAge(quote.stale_seconds)})` : ""}
+              </span>
+              <span>Source: {providerFeed}{providerFeed !== activeProviderFeed && activeProviderFeed !== "--" ? ` (active: ${activeProviderFeed})` : ""}</span>
+              <span>Session: {safeText(quote?.market_session, "--")}</span>
+              <span>Price time: {formatDateTime(liveQuoteTimestamp)}</span>
             </div>
           </section>
 
@@ -766,11 +888,7 @@ export function TickerDetailsView() {
                     <p>1m candle closes with latest quote as the live price point.</p>
                   </div>
                   <div className="details-market-meta">
-                    <span>{marketFeed}</span>
                     <span>{providerFeed}</span>
-                    {quote?.active_feed && quote.feed !== quote.active_feed ? <span>Latest available</span> : null}
-                    {quote?.provider === "yahoo" ? <span>Yahoo fallback</span> : null}
-                    {quote?.is_stale ? <span>{formatStaleAge(quote.stale_seconds)}</span> : null}
                     <span>Updated {formatDateTime(marketUpdatedAt)}</span>
                   </div>
                 </div>

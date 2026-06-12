@@ -407,6 +407,107 @@ class MarketDataApiTest(unittest.TestCase):
         self.assertEqual(quote.json()["feed"], "iex")
         self.assertEqual(quote.json()["last_price"], "75.50000000")
 
+    def test_market_quote_merges_bid_ask_from_freshest_row_when_selected_has_none(self) -> None:
+        now = utc_now()
+        bid_ask_time = now - timedelta(minutes=40)
+        with self.session_factory() as db:
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    last_price=Decimal("75.50"),
+                    bid_price=Decimal("75.40"),
+                    ask_price=Decimal("75.60"),
+                    source_timestamp=bid_ask_time,
+                    updated_at=now,
+                    raw_payload={
+                        "_data_source": "websocket",
+                        "_bid_ask_timestamp": bid_ask_time.isoformat(),
+                    },
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="yahoo",
+                    feed="yahoo",
+                    last_price=Decimal("76.25"),
+                    source_timestamp=now,
+                    updated_at=now,
+                    raw_payload={"_data_source": "yahoo_poll"},
+                )
+            )
+            db.commit()
+
+        quote = self.client.get("/api/market/quotes/LITE")
+
+        self.assertEqual(quote.status_code, 200)
+        payload = quote.json()
+        self.assertEqual(payload["provider"], "yahoo")
+        self.assertEqual(payload["bid_price"], "75.40000000")
+        self.assertEqual(payload["ask_price"], "75.60000000")
+        self.assertEqual(payload["bid_ask_provider"], "alpaca")
+        self.assertEqual(payload["bid_ask_feed"], "iex")
+        self.assertIsNotNone(payload["bid_ask_timestamp"])
+        self.assertGreaterEqual(payload["bid_ask_stale_seconds"], 2300)
+
+    def test_market_candles_dedupes_same_minute_across_providers(self) -> None:
+        now = utc_now()
+        minute = now - timedelta(minutes=5)
+        with self.session_factory() as db:
+            db.add(
+                MarketCandle(
+                    symbol="LITE",
+                    provider="yahoo",
+                    feed="yahoo",
+                    timeframe="1m",
+                    timestamp=minute,
+                    open=Decimal("75.00"),
+                    high=Decimal("75.20"),
+                    low=Decimal("74.90"),
+                    close=Decimal("75.10"),
+                    volume=Decimal("800"),
+                )
+            )
+            db.add(
+                MarketCandle(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    timeframe="1m",
+                    timestamp=minute,
+                    open=Decimal("75.01"),
+                    high=Decimal("75.21"),
+                    low=Decimal("74.91"),
+                    close=Decimal("75.11"),
+                    volume=Decimal("900"),
+                )
+            )
+            db.add(
+                MarketCandle(
+                    symbol="LITE",
+                    provider="yahoo",
+                    feed="yahoo",
+                    timeframe="1m",
+                    timestamp=minute + timedelta(minutes=1),
+                    open=Decimal("75.11"),
+                    high=Decimal("75.30"),
+                    low=Decimal("75.05"),
+                    close=Decimal("75.25"),
+                    volume=Decimal("500"),
+                )
+            )
+            db.commit()
+
+        response = self.client.get("/api/market/candles/LITE?timeframe=1m&range=1d")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["provider"], "alpaca")
+        self.assertEqual(rows[1]["provider"], "yahoo")
+
     def test_market_candles_rejects_unknown_range(self) -> None:
         response = self.client.get("/api/market/candles/LITE?range=bad")
 

@@ -45,3 +45,6 @@ id_ed25519
 
 # Docker local overrides
 docker-compose.override.yml
+
+# Local Claude Code preview config (machine-specific paths)
+.claude/

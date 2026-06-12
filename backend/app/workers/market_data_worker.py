@@ -939,6 +939,13 @@ def _upsert_quote(db: Session, *, provider: str, feed: str, message: dict[str, o
     elif quote.ask_price is not None and quote.ask_price <= 0:
         quote.ask_price = None
         quote.ask_size = None
+    if bid_price is not None or ask_price is not None:
+        bid_ask_timestamp = source_timestamp or utc_now()
+        message["_bid_ask_timestamp"] = _as_utc(bid_ask_timestamp).isoformat()
+    else:
+        previous = quote.raw_payload.get("_bid_ask_timestamp") if isinstance(quote.raw_payload, dict) else None
+        if isinstance(previous, str):
+            message["_bid_ask_timestamp"] = previous
     quote.source_timestamp = source_timestamp
     quote.updated_at = utc_now()
     quote.raw_payload = message
@@ -957,13 +964,23 @@ def _upsert_yahoo_quote(db: Session, quote_data: YahooQuote) -> bool:
         quote = MarketQuote(symbol=quote_data.symbol, provider="yahoo", feed="yahoo")
         db.add(quote)
     quote.last_price = quote_data.last_price
-    quote.bid_price = quote_data.bid_price
-    quote.ask_price = quote_data.ask_price
+    raw_payload = dict(quote_data.raw_payload)
+    raw_payload["_data_source"] = quote_data.data_source
+    # Yahoo rarely returns bid/ask; keep the last known values instead of
+    # wiping them on every poll.
+    if quote_data.bid_price is not None or quote_data.ask_price is not None:
+        if quote_data.bid_price is not None:
+            quote.bid_price = quote_data.bid_price
+        if quote_data.ask_price is not None:
+            quote.ask_price = quote_data.ask_price
+        raw_payload["_bid_ask_timestamp"] = _as_utc(quote_data.source_timestamp).isoformat()
+    else:
+        previous = quote.raw_payload.get("_bid_ask_timestamp") if isinstance(quote.raw_payload, dict) else None
+        if isinstance(previous, str):
+            raw_payload["_bid_ask_timestamp"] = previous
     quote.last_bar_close = quote_data.last_price
     quote.source_timestamp = quote_data.source_timestamp
     quote.updated_at = utc_now()
-    raw_payload = dict(quote_data.raw_payload)
-    raw_payload["_data_source"] = quote_data.data_source
     quote.raw_payload = raw_payload
     return True
 
@@ -1035,7 +1052,11 @@ def _upsert_candle(db: Session, *, provider: str, feed: str, message: dict[str, 
         db.add(quote)
     quote.last_bar_close = candle.close
     quote.last_price = candle.close
-    quote.source_timestamp = timestamp
+    # Bars are stamped at the start of their minute; never move the quote's
+    # source_timestamp backwards past a newer quote message, otherwise the
+    # quote looks staler than it is and later quote messages get rejected.
+    if quote.source_timestamp is None or _as_utc(timestamp) > _as_utc(quote.source_timestamp):
+        quote.source_timestamp = timestamp
     quote.updated_at = utc_now()
     return "candle"
 

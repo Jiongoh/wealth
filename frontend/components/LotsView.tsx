@@ -100,7 +100,9 @@ const lotAnalysisColumns: DataTableColumn<PositionLot>[] = [
   },
   { key: "open_datetime", header: "Opened", align: "center", render: (value) => formatDisplayDate(value as string | null) },
   {
-    key: "unrealized_pnl",
+    // Column keys must be unique; this column derives from the row, so any
+    // otherwise-unused field works as its key.
+    key: "open_price",
     header: "Profit Over 20%",
     align: "center",
     render: (_value, row) => {
