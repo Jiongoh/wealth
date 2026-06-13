@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from app.core.constants import ALPACA_FREE_MAX_SYMBOLS
+
 
 def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -43,11 +45,11 @@ class Settings:
     alpaca_api_key_id: str = ""
     alpaca_api_secret_key: str = ""
     alpaca_feed_mode: str = "auto"
-    alpaca_max_symbols: int = 30
+    alpaca_max_symbols: int = ALPACA_FREE_MAX_SYMBOLS
     yahoo_fallback_enabled: bool = True
     yahoo_fallback_mode: str = "auto"
     yahoo_fallback_interval_seconds: int = 15
-    yahoo_fallback_max_symbols: int = 30
+    yahoo_fallback_max_symbols: int = ALPACA_FREE_MAX_SYMBOLS
     yahoo_fallback_write_candles: bool = True
     yahoo_fallback_timeout_seconds: float = 10.0
     market_data_retention_minutes: int = 60
@@ -88,11 +90,11 @@ def get_settings() -> Settings:
             "auto",
             {"auto", "iex", "overnight"},
         ),
-        alpaca_max_symbols=int(os.getenv("ALPACA_MAX_SYMBOLS", "30")),
+        alpaca_max_symbols=int(os.getenv("ALPACA_MAX_SYMBOLS", str(ALPACA_FREE_MAX_SYMBOLS))),
         yahoo_fallback_enabled=_get_bool("YAHOO_FALLBACK_ENABLED", True),
         yahoo_fallback_mode=os.getenv("YAHOO_FALLBACK_MODE", "auto").lower(),
         yahoo_fallback_interval_seconds=int(os.getenv("YAHOO_FALLBACK_INTERVAL_SECONDS", "15")),
-        yahoo_fallback_max_symbols=int(os.getenv("YAHOO_FALLBACK_MAX_SYMBOLS", "30")),
+        yahoo_fallback_max_symbols=int(os.getenv("YAHOO_FALLBACK_MAX_SYMBOLS", str(ALPACA_FREE_MAX_SYMBOLS))),
         yahoo_fallback_write_candles=_get_bool("YAHOO_FALLBACK_WRITE_CANDLES", True),
         yahoo_fallback_timeout_seconds=float(os.getenv("YAHOO_FALLBACK_TIMEOUT_SECONDS", "10")),
         market_data_retention_minutes=int(os.getenv("MARKET_DATA_RETENTION_MINUTES", "60")),

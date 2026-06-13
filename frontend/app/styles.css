@@ -1994,6 +1994,77 @@ h1 {
   gap: 10px;
 }
 
+.subscription-usage {
+  background: linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 20px;
+  padding: 16px 20px;
+}
+
+.subscription-usage-head {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.subscription-usage-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.subscription-usage-count {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.subscription-usage-bar {
+  background: rgba(113, 90, 53, 0.14);
+  border-radius: var(--radius-pill);
+  height: 7px;
+  margin: 10px 0 8px;
+  overflow: hidden;
+}
+
+.subscription-usage-bar span {
+  background: #4f8a55;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.subscription-usage-detail {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.subscription-usage.is-near .subscription-usage-bar span {
+  background: #c9911f;
+}
+
+.subscription-usage.is-near {
+  border-color: rgba(201, 145, 31, 0.5);
+}
+
+.subscription-usage.is-over .subscription-usage-bar span {
+  background: #b4521a;
+}
+
+.subscription-usage.is-over {
+  border-color: rgba(180, 82, 26, 0.55);
+}
+
+.subscription-usage.is-over .subscription-usage-detail {
+  color: #a4520f;
+  font-weight: 600;
+}
+
 .watchlist-panel {
   background: linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92));
   border-color: var(--border);

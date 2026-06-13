@@ -126,9 +126,7 @@ function positionHref(symbol: string | null | undefined): string | undefined {
   if (!symbol) {
     return undefined;
   }
-  return symbol.toUpperCase() === "LITE"
-    ? "/details/LITE"
-    : `/lots?symbol=${encodeURIComponent(symbol)}&from=positions`;
+  return `/details/${encodeURIComponent(symbol.toUpperCase())}`;
 }
 
 function SortableHeader({
@@ -470,7 +468,7 @@ export function PositionsView() {
               <div>
                 <h2>Current Holdings</h2>
                 <p>
-                  Showing {visiblePositions.length} of {currentPositions.length} positions. Select a symbol to inspect its lots.
+                  Showing {visiblePositions.length} of {currentPositions.length} positions. Select a symbol to view its details.
                 </p>
               </div>
               <div className="table-controls positions-table-controls">

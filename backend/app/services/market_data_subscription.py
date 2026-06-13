@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.constants import ALPACA_FREE_MAX_SYMBOLS
 from app.models import LotAnalysisDaily, WatchlistTicker
 
 
@@ -28,7 +29,7 @@ class MarketDataSubscriptionService:
         self,
         db: Session,
         *,
-        max_symbols: int = 30,
+        max_symbols: int = ALPACA_FREE_MAX_SYMBOLS,
     ) -> MarketDataSubscriptionPlan:
         safe_max_symbols = max(0, max_symbols)
         holding_symbols = _current_holding_symbols(db)

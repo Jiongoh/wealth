@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   Component,
   type ErrorInfo,
@@ -23,7 +22,6 @@ import {
   type MarketQuote,
 } from "@/lib/api";
 
-const PILOT_SYMBOL = "LITE";
 const QUOTE_REFRESH_MS = 15_000;
 const CANDLE_REFRESH_MS = 30_000;
 
@@ -261,12 +259,12 @@ function validTimestamp(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : value;
 }
 
-function normalizeQuote(value: unknown): NormalizedMarketQuote | null {
+function normalizeQuote(value: unknown, fallbackSymbol: string): NormalizedMarketQuote | null {
   if (!value || typeof value !== "object") {
     return null;
   }
   const row = value as Partial<MarketQuote>;
-  const symbol = safeText(row.symbol, PILOT_SYMBOL).toUpperCase();
+  const symbol = safeText(row.symbol, fallbackSymbol).toUpperCase();
   const updatedAt = validTimestamp(row.updated_at) ?? "";
   return {
     symbol,
@@ -296,7 +294,7 @@ function normalizeQuote(value: unknown): NormalizedMarketQuote | null {
   };
 }
 
-function normalizeCandles(value: unknown): NormalizedMarketCandle[] {
+function normalizeCandles(value: unknown, fallbackSymbol: string): NormalizedMarketCandle[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -317,7 +315,7 @@ function normalizeCandles(value: unknown): NormalizedMarketCandle[] {
 
     return [
       {
-        symbol: safeText(row.symbol, PILOT_SYMBOL).toUpperCase(),
+        symbol: safeText(row.symbol, fallbackSymbol).toUpperCase(),
         provider: safeText(row.provider, "unknown"),
         feed: safeText(row.feed, "unknown"),
         timeframe: safeText(row.timeframe, "1m"),
@@ -357,7 +355,7 @@ class MarketDataBoundary extends Component<DetailsBoundaryProps, DetailsBoundary
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("LITE market data panel render failed", {
+    console.error("Details market data panel render failed", {
       message: error.message,
       componentStack: errorInfo.componentStack,
     });
@@ -619,7 +617,7 @@ function PriceLineChart({
   };
 
   return (
-    <div className="details-price-chart" aria-label="LITE price area chart">
+    <div className="details-price-chart" aria-label="Price area chart">
       <div className="details-price-chart-meta">
         <span>{chart.latestPoint.source === "live quote" ? "Latest quote" : "Latest close"}</span>
         <strong>{formatCurrency(chart.latestPoint.price)}</strong>
@@ -632,7 +630,7 @@ function PriceLineChart({
           viewBox={`0 0 ${chart.width} ${chart.height}`}
           preserveAspectRatio="none"
         >
-          <title>LITE price area chart</title>
+          <title>Price area chart</title>
           <defs>
             <linearGradient id="lite-area-gradient" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#d49a1f" stopOpacity="0.2" />
@@ -715,7 +713,7 @@ function PriceLineChart({
   );
 }
 
-export function TickerDetailsView() {
+export function TickerDetailsView({ symbol }: { symbol: string }) {
   const [data, setData] = useState<DetailsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshState, setRefreshState] = useState<RefreshState>({
@@ -727,6 +725,11 @@ export function TickerDetailsView() {
 
   useEffect(() => {
     let active = true;
+    // Switching symbols (client-side nav reuses this component): clear the
+    // previous symbol's data so the loading state shows and stale rows from
+    // the old symbol never flash through.
+    setData(null);
+    setError(null);
     // Monotonic counters drop out-of-order responses when a slow request
     // resolves after a newer one.
     let quoteSeq = 0;
@@ -756,19 +759,19 @@ export function TickerDetailsView() {
       const candleRequest = ++candleSeq;
       try {
         const [quote, candles, positions] = await Promise.all([
-          api.marketQuote(PILOT_SYMBOL),
-          api.marketCandles(PILOT_SYMBOL, { timeframe: "1m", range: "1h" }),
+          api.marketQuote(symbol),
+          api.marketCandles(symbol, { timeframe: "1m", range: "1h" }),
           api.positions(),
         ]);
         if (!active || quoteRequest !== quoteSeq || candleRequest !== candleSeq) {
           return;
         }
         const normalizedPositions = normalizePositions(positions);
-        const position = normalizedPositions.find((row) => row.symbol?.toUpperCase() === PILOT_SYMBOL) ?? null;
+        const position = normalizedPositions.find((row) => row.symbol?.toUpperCase() === symbol) ?? null;
         setData({
-          candles: normalizeCandles(candles),
+          candles: normalizeCandles(candles, symbol),
           position,
-          quote: normalizeQuote(quote),
+          quote: normalizeQuote(quote, symbol),
         });
         setError(null);
         markRefreshSuccess();
@@ -794,11 +797,11 @@ export function TickerDetailsView() {
       }
       const request = ++quoteSeq;
       try {
-        const quote = await api.marketQuote(PILOT_SYMBOL);
+        const quote = await api.marketQuote(symbol);
         if (!active || request !== quoteSeq) {
           return;
         }
-        const normalizedQuote = normalizeQuote(quote);
+        const normalizedQuote = normalizeQuote(quote, symbol);
         setData((current) => (current ? { ...current, quote: normalizedQuote } : current));
         markRefreshSuccess();
       } catch (requestError) {
@@ -814,11 +817,11 @@ export function TickerDetailsView() {
       }
       const request = ++candleSeq;
       try {
-        const candles = await api.marketCandles(PILOT_SYMBOL, { timeframe: "1m", range: "1h" });
+        const candles = await api.marketCandles(symbol, { timeframe: "1m", range: "1h" });
         if (!active || request !== candleSeq) {
           return;
         }
-        setData((current) => (current ? { ...current, candles: normalizeCandles(candles) } : current));
+        setData((current) => (current ? { ...current, candles: normalizeCandles(candles, symbol) } : current));
         markRefreshSuccess();
       } catch (requestError) {
         if (active) {
@@ -836,7 +839,7 @@ export function TickerDetailsView() {
       window.clearInterval(quoteInterval);
       window.clearInterval(candleInterval);
     };
-  }, []);
+  }, [symbol]);
 
   const quote = data?.quote ?? null;
   const candles = data?.candles ?? [];
@@ -866,22 +869,19 @@ export function TickerDetailsView() {
     <>
       <div className="page-header details-page-header">
         <div>
-          <p className="eyebrow">Ticker details pilot</p>
-          <h1>{PILOT_SYMBOL}</h1>
-          <p className="page-description">A focused market data and lots view for the LITE details pilot.</p>
+          <p className="eyebrow">Ticker details</p>
+          <h1>{symbol}</h1>
+          <p className="page-description">Live market data, lots, and position detail for {symbol}.</p>
         </div>
-        <Link className="action-link" href={`/lots?symbol=${PILOT_SYMBOL}&from=positions`}>
-          Open Lots
-        </Link>
       </div>
 
       {error ? (
         <section className="dashboard-state">
-          <ErrorState message={error} title="Unable to load LITE details" />
+          <ErrorState message={error} title={`Unable to load ${symbol} details`} />
         </section>
       ) : !data ? (
         <section className="dashboard-state">
-          <LoadingState message="Loading LITE market data and lots..." />
+          <LoadingState message={`Loading ${symbol} market data and lots...`} />
         </section>
       ) : (
         <>
@@ -967,7 +967,7 @@ export function TickerDetailsView() {
                 ) : candles.length === 0 && !quote ? (
                   <div className="details-panel-state">
                     <EmptyState
-                      message="No quote or candle data is available for LITE yet."
+                      message={`No quote or candle data is available for ${symbol} yet.`}
                       title="Latest data unavailable"
                     />
                   </div>
@@ -981,7 +981,7 @@ export function TickerDetailsView() {
               <div className="panel-header">
                 <div>
                   <h2>Position Summary</h2>
-                  <p>Latest current-position snapshot for LITE.</p>
+                  <p>Latest current-position snapshot for {symbol}.</p>
                 </div>
               </div>
               {position ? (
@@ -1014,7 +1014,7 @@ export function TickerDetailsView() {
           </section>
 
           <section className="details-lots-section">
-            <LotsView embedded symbol={PILOT_SYMBOL} />
+            <LotsView symbol={symbol} />
           </section>
         </>
       )}

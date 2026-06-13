@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.market import get_market_settings
 from app.core.config import Settings
+from app.core.constants import ALPACA_FREE_MAX_SYMBOLS
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
@@ -142,6 +143,17 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
             plan.warnings,
             ["Current holdings exceed ALPACA_MAX_SYMBOLS; some holding symbols were excluded."],
         )
+
+    def test_default_max_symbols_comes_from_shared_constant(self) -> None:
+        self._seed_subscription_candidates()
+        with self.session_factory() as db:
+            plan = MarketDataSubscriptionService().get_subscription_symbols(db)
+        # No max_symbols passed -> falls back to the single source of truth.
+        self.assertEqual(plan.max_symbols, ALPACA_FREE_MAX_SYMBOLS)
+        self.assertEqual(ALPACA_FREE_MAX_SYMBOLS, 30)
+        # Well under the cap, so everything subscribes and nothing is excluded.
+        self.assertEqual(plan.overflow_count, 0)
+        self.assertEqual(plan.warnings, [])
 
     def test_preview_api_uses_configured_max_symbols_without_alpaca_credentials(self) -> None:
         self._seed_subscription_candidates()

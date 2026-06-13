@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 import websockets
 
+from app.core.constants import ALPACA_FREE_MAX_SYMBOLS
 from app.core.logging import configure_logging
 from app.models import MarketCandle, MarketProviderStatus, MarketQuote
 from app.models.market_data import utc_now
@@ -93,11 +94,11 @@ def load_worker_settings() -> MarketDataWorkerSettings:
         alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID", ""),
         alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY", ""),
         alpaca_feed_mode=os.getenv("ALPACA_FEED_MODE", "auto").lower(),
-        alpaca_max_symbols=int(os.getenv("ALPACA_MAX_SYMBOLS", "30")),
+        alpaca_max_symbols=int(os.getenv("ALPACA_MAX_SYMBOLS", str(ALPACA_FREE_MAX_SYMBOLS))),
         yahoo_fallback_enabled=_parse_bool(os.getenv("YAHOO_FALLBACK_ENABLED", "true")),
         yahoo_fallback_mode=os.getenv("YAHOO_FALLBACK_MODE", "auto").lower(),
         yahoo_fallback_interval_seconds=int(os.getenv("YAHOO_FALLBACK_INTERVAL_SECONDS", "15")),
-        yahoo_fallback_max_symbols=int(os.getenv("YAHOO_FALLBACK_MAX_SYMBOLS", "30")),
+        yahoo_fallback_max_symbols=int(os.getenv("YAHOO_FALLBACK_MAX_SYMBOLS", str(ALPACA_FREE_MAX_SYMBOLS))),
         yahoo_fallback_write_candles=_parse_bool(os.getenv("YAHOO_FALLBACK_WRITE_CANDLES", "true")),
         yahoo_fallback_timeout_seconds=float(os.getenv("YAHOO_FALLBACK_TIMEOUT_SECONDS", "10")),
         market_data_retention_minutes=int(os.getenv("MARKET_DATA_RETENTION_MINUTES", "60")),

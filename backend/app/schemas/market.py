@@ -60,3 +60,25 @@ class MarketCandleResponse(BaseModel):
     close: Decimal | None
     volume: Decimal | None
     vwap: Decimal | None
+
+
+class MarketSubscriptionPlanResponse(BaseModel):
+    """Realtime subscription plan: which symbols are streamed and how the
+    Alpaca free-tier cap is being consumed. Powers the watchlist usage meter.
+    """
+
+    symbols: list[str]
+    max_symbols: int
+    total_candidates: int
+    subscribed_count: int
+    overflow_count: int
+    holdings_count: int
+    watchlist_realtime_count: int
+    excluded_symbols: list[str]
+    warnings: list[str]
+
+
+class MarketSubscriptionRequest(BaseModel):
+    """Reserved request body for subscribing a non-held symbol to realtime data."""
+
+    symbol: str

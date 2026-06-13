@@ -1,18 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
-import { StatCard } from "@/components/StatCard";
 import { api, type DecimalValue, type LotAnalysis, type PositionLot } from "@/lib/api";
 import { formatDisplayDate } from "@/lib/format";
 
+// LotsView is embedded inside the ticker details page; the standalone /lots
+// route was removed once lot analysis was folded into details.
 type LotsViewProps = {
-  embedded?: boolean;
-  from?: "positions" | "watchlist";
   symbol?: string;
 };
 
@@ -129,17 +127,7 @@ const lotAnalysisColumns: DataTableColumn<PositionLot>[] = [
   },
 ];
 
-function backLink(from: LotsViewProps["from"]): { href: string; label: string } {
-  if (from === "watchlist") {
-    return { href: "/watchlist", label: "Back to Watchlist" };
-  }
-  if (from === "positions") {
-    return { href: "/positions", label: "Back to Positions" };
-  }
-  return { href: "/watchlist", label: "Back" };
-}
-
-export function LotsView({ embedded = false, from, symbol }: LotsViewProps) {
+export function LotsView({ symbol }: LotsViewProps) {
   const [data, setData] = useState<{ lots: PositionLot[]; analysis: LotAnalysis[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,9 +146,7 @@ export function LotsView({ embedded = false, from, symbol }: LotsViewProps) {
     Promise.all([api.lots(symbol), api.lotAnalysis()])
       .then(([lots, analysis]) => {
         if (active) {
-          const filteredAnalysis = symbol
-            ? analysis.filter((row) => row.symbol?.toUpperCase() === symbol)
-            : analysis;
+          const filteredAnalysis = analysis.filter((row) => row.symbol?.toUpperCase() === symbol);
           setData({ lots, analysis: filteredAnalysis });
         }
       })
@@ -175,127 +161,46 @@ export function LotsView({ embedded = false, from, symbol }: LotsViewProps) {
     };
   }, [symbol]);
 
-  const aggregate = useMemo(() => {
-    if (!data) {
-      return null;
-    }
-    const currency = data.lots.find((lot) => lot.currency)?.currency ?? null;
-    const quantity = data.lots.reduce((sum, lot) => sum + (decimalNumber(lot.quantity) ?? 0), 0);
-    const value = data.lots.reduce((sum, lot) => sum + (decimalNumber(lot.position_value) ?? 0), 0);
-    const pnl = data.lots.reduce((sum, lot) => sum + (decimalNumber(lot.unrealized_pnl) ?? 0), 0);
-    const costBasis = data.lots.reduce((sum, lot) => sum + (decimalNumber(lot.cost_basis_money) ?? 0), 0);
-    const analysisRow = data.analysis[0];
-    const currentPrice =
-      decimalNumber(analysisRow?.current_price ?? null) ??
-      data.lots.find((lot) => decimalNumber(lot.mark_price) !== null)?.mark_price ??
-      null;
-    const avgCost =
-      decimalNumber(analysisRow?.avg_cost ?? null) ??
-      (quantity !== 0 ? costBasis / quantity : null);
-    return { avgCost, currency, currentPrice, pnl, quantity, value };
-  }, [data]);
-
-  const pnlTone = aggregate && aggregate.pnl < 0 ? "negative" : "positive";
   const lots = data?.lots ?? [];
-  const analysis = data?.analysis ?? [];
-  const back = backLink(from);
 
   if (!symbol) {
-    if (embedded) {
-      return (
-        <section className="dashboard-state details-embedded-state">
-          <EmptyState message="No current lots." />
-        </section>
-      );
-    }
-
     return (
-      <>
-        <div className="page-header">
-          <div>
-            <p className="eyebrow">Portfolio detail</p>
-            <h1>Lots</h1>
-            <p className="page-description">Please select a ticker from Positions or Watchlist to view lots.</p>
-          </div>
-          <Link className="action-link" href={back.href}>
-            {back.label}
-          </Link>
-        </div>
-        <section className="dashboard-state">
-          <EmptyState message="Lots is now a detail page. Open it from a held position or watchlist ticker." />
-        </section>
-      </>
+      <section className="dashboard-state details-embedded-state">
+        <EmptyState message="No current lots." />
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="dashboard-state details-embedded-state">
+        <ErrorState message={error} title="Unable to load lots" />
+      </section>
+    );
+  }
+
+  if (!data) {
+    return (
+      <section className="dashboard-state details-embedded-state">
+        <LoadingState message="Loading lot analysis and open lots..." />
+      </section>
     );
   }
 
   return (
-    <>
-      {embedded ? null : (
-        <div className="page-header">
-          <div>
-            <p className="eyebrow">Portfolio</p>
-            <h1>Lots</h1>
-            <p className="page-description">
-              {symbol ? `Open tax lots filtered for ${symbol}.` : "Open tax lots and cost basis details for thoughtful decisions."}
-            </p>
-          </div>
-          <Link className="action-link" href={back.href}>
-            {back.label}
-          </Link>
+    <section className="panel lots-analysis-panel">
+      <div className="panel-header">
+        <div>
+          <h2>{symbol} Lot Analysis</h2>
+          <p>Cost basis, opening date, and unrealized performance by tax lot.</p>
         </div>
-      )}
-      {error ? (
-        <section className={`dashboard-state${embedded ? " details-embedded-state" : ""}`}>
-          <ErrorState message={error} title="Unable to load lots" />
-        </section>
-      ) : !data ? (
-        <section className={`dashboard-state${embedded ? " details-embedded-state" : ""}`}>
-          <LoadingState message="Loading lot analysis and open lots..." />
-        </section>
-      ) : (
-        <>
-          {!embedded && lots.length > 0 ? (
-            <section className="stat-grid" aria-label="Lot statistics">
-              <StatCard label="Open Lots" value={String(lots.length)} hint={symbol ?? "Across symbols"} tone="accent" />
-              <StatCard label="Quantity" value={formatNumber(aggregate?.quantity ?? null, 4)} hint="Units held" tone="warm" />
-              <StatCard label="Market Value" value={formatMoney(aggregate?.value ?? null, aggregate?.currency ?? null)} hint="Open lots" />
-              <StatCard
-                label="Lot P&L"
-                value={formatMoney(aggregate?.pnl ?? null, aggregate?.currency ?? null)}
-                hint="Unrealized"
-                tone="dark"
-                valueTone={pnlTone}
-              />
-              <StatCard
-                label="Current Price"
-                value={formatMoney(aggregate?.currentPrice ?? null, aggregate?.currency ?? null)}
-                hint="Latest mark"
-                tone="warm"
-              />
-              <StatCard
-                label="Avg Cost"
-                value={formatMoney(aggregate?.avgCost ?? null, aggregate?.currency ?? null)}
-                hint="Weighted cost"
-                tone="accent"
-              />
-            </section>
-          ) : null}
-          <section className="panel lots-analysis-panel">
-            <div className="panel-header">
-              <div>
-                <h2>{symbol ? `${symbol} Lot Analysis` : "Lot Analysis"}</h2>
-                <p>Cost basis, opening date, and unrealized performance by tax lot.</p>
-              </div>
-            </div>
-            <DataTable
-              columns={lotAnalysisColumns}
-              emptyMessage={symbol ? `No lot analysis is available for ${symbol}.` : "No lot analysis data is available."}
-              getRowKey={(row, index) => row.originating_transaction_id ?? index}
-              rows={lots}
-            />
-          </section>
-        </>
-      )}
-    </>
+      </div>
+      <DataTable
+        columns={lotAnalysisColumns}
+        emptyMessage={`No lot analysis is available for ${symbol}.`}
+        getRowKey={(row, index) => row.originating_transaction_id ?? index}
+        rows={lots}
+      />
+    </section>
   );
 }

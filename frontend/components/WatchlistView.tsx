@@ -8,7 +8,46 @@ import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
-import { api, type DecimalValue, type SymbolSearchResult, type WatchlistItem, type WatchlistTag } from "@/lib/api";
+import {
+  api,
+  type DecimalValue,
+  type MarketSubscriptionPlan,
+  type SymbolSearchResult,
+  type WatchlistItem,
+  type WatchlistTag,
+} from "@/lib/api";
+
+// Warn once realtime subscriptions reach this share of the Alpaca free-tier cap.
+const SUBSCRIPTION_WARN_RATIO = 0.8;
+
+function SubscriptionUsageBanner({ plan }: { plan: MarketSubscriptionPlan }) {
+  const max = Math.max(plan.max_symbols, 1);
+  const ratio = Math.min(plan.subscribed_count / max, 1);
+  const overCap = plan.overflow_count > 0;
+  const nearCap = !overCap && plan.subscribed_count >= max * SUBSCRIPTION_WARN_RATIO;
+  const tone = overCap ? "is-over" : nearCap ? "is-near" : "is-ok";
+  return (
+    <section className={`subscription-usage ${tone}`} aria-label="Realtime subscription usage">
+      <div className="subscription-usage-head">
+        <span className="subscription-usage-title">Realtime market data</span>
+        <span className="subscription-usage-count">
+          {plan.subscribed_count} / {plan.max_symbols} symbols
+        </span>
+      </div>
+      <div className="subscription-usage-bar" role="presentation">
+        <span style={{ width: `${ratio * 100}%` }} />
+      </div>
+      <p className="subscription-usage-detail">
+        {plan.holdings_count} held (auto-subscribed) · {plan.watchlist_realtime_count} watchlist realtime
+        {overCap
+          ? ` · ${plan.overflow_count} not subscribed: ${plan.excluded_symbols.join(", ")}`
+          : nearCap
+            ? " · approaching the Alpaca free-tier limit"
+            : ""}
+      </p>
+    </section>
+  );
+}
 
 const MAX_TAGS_PER_TICKER = 5;
 const MAX_TAGS_PER_REQUEST = 5;
@@ -132,6 +171,7 @@ export function WatchlistView() {
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
   const [isSymbolSearching, setIsSymbolSearching] = useState(false);
   const [symbolSearchError, setSymbolSearchError] = useState<string | null>(null);
+  const [subscriptionPlan, setSubscriptionPlan] = useState<MarketSubscriptionPlan | null>(null);
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -151,6 +191,27 @@ export function WatchlistView() {
     loadWatchlist();
     // Initial load only; filter changes are handled explicitly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Subscription usage is best-effort: a failure here must not block the
+    // watchlist itself, so it loads separately and silently degrades.
+    let active = true;
+    api
+      .marketSubscriptionPlan()
+      .then((plan) => {
+        if (active) {
+          setSubscriptionPlan(plan);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSubscriptionPlan(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -688,15 +749,9 @@ export function WatchlistView() {
       align: "center",
       render: (_, row) => (
         <span className="watchlist-actions">
-          {row.has_position ? (
-            <Link className="small-action-link" href={`/lots?symbol=${encodeURIComponent(row.symbol)}&from=watchlist`}>
-              View Lots
-            </Link>
-          ) : (
-            <button className="small-action-link small-action-link-disabled" disabled title="No current position for this ticker." type="button">
-              View Lots
-            </button>
-          )}
+          <Link className="small-action-link" href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}>
+            View Details
+          </Link>
           <button className="text-action" disabled={isSaving} onClick={() => startEdit(row)} type="button">
             Edit
           </button>
@@ -725,6 +780,8 @@ export function WatchlistView() {
           </button>
         </div>
       </div>
+
+      {subscriptionPlan ? <SubscriptionUsageBanner plan={subscriptionPlan} /> : null}
 
       <section className="panel watchlist-panel">
         <div className="panel-header positions-panel-header">

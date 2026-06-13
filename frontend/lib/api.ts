@@ -376,6 +376,18 @@ export type MarketProviderStatus = {
   updated_at: string;
 };
 
+export type MarketSubscriptionPlan = {
+  symbols: string[];
+  max_symbols: number;
+  total_candidates: number;
+  subscribed_count: number;
+  overflow_count: number;
+  holdings_count: number;
+  watchlist_realtime_count: number;
+  excluded_symbols: string[];
+  warnings: string[];
+};
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -486,6 +498,8 @@ export const api = {
       }),
       { cache: "no-store" },
     ),
+  marketSubscriptionPlan: () =>
+    request<MarketSubscriptionPlan>("/market/subscriptions/preview", { cache: "no-store" }),
   trades: (filters: DateRange & { symbol?: string; limit?: number } = {}) =>
     request<TradeListResponse>(withQuery("/trades", { ...filters })),
   cashActivities: (filters: DateRange & { currency?: string; activity_type?: string } = {}) =>

@@ -11,6 +11,8 @@ from app.schemas.market import (
     MarketCandleResponse,
     MarketProviderStatusResponse,
     MarketQuoteResponse,
+    MarketSubscriptionPlanResponse,
+    MarketSubscriptionRequest,
 )
 from app.schemas.pnl import (
     RealizedPnlBySymbolResponse,
@@ -53,6 +55,8 @@ __all__ = [
     "MarketCandleResponse",
     "MarketProviderStatusResponse",
     "MarketQuoteResponse",
+    "MarketSubscriptionPlanResponse",
+    "MarketSubscriptionRequest",
     "RealizedPnlBySymbolResponse",
     "RealizedPnlDailyResponse",
     "RealizedPnlSummaryResponse",
