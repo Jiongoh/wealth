@@ -202,6 +202,31 @@ function formatDateTime(value: string | null | undefined): string {
   return `${datePart} ${timePart}`;
 }
 
+// US equities (including the Blue Ocean overnight session the market-data
+// worker depends on) trade Sunday 20:00 ET through Friday 20:00 ET. Outside
+// that window the upstream feed is dark, so the page has no live data and we
+// show a dedicated "markets closed" state instead of a stale price.
+function isUsMarketWeekend(now: Date): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "numeric",
+    hour12: false,
+  }).formatToParts(now);
+  const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0") % 24;
+  if (weekday === "Sat") {
+    return true;
+  }
+  if (weekday === "Sun") {
+    return hour < 20;
+  }
+  if (weekday === "Fri") {
+    return hour >= 20;
+  }
+  return false;
+}
+
 function formatTime(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") {
     return "--";
@@ -823,12 +848,16 @@ export function TickerDetailsView() {
   const providerFeed = formatProviderFeed(quote?.provider, quote?.feed ?? latestCandle?.feed);
   const activeProviderFeed = formatProviderFeed(quote?.active_provider, quote?.active_feed);
   const quoteStatus = formatStatusLabel(quote?.status_label);
+  // The US feed is dark over the weekend; show a closed state rather than a
+  // stale Friday price dressed up as live data.
+  const marketClosed = isUsMarketWeekend(new Date());
   // Yahoo never provides bid/ask, so while the Yahoo fallback route is active
   // any bid/ask we have is a leftover Alpaca value; hide it instead.
   const yahooFallbackActive = (quote?.provider ?? "").toLowerCase() === "yahoo";
   const hasBidAsk = !yahooFallbackActive
     && quote?.bid_price !== null && quote?.bid_price !== undefined
     && quote?.ask_price !== null && quote?.ask_price !== undefined;
+  const showBidAsk = hasBidAsk && !marketClosed;
   const bidAskSource = formatProviderFeed(quote?.bid_ask_provider ?? quote?.provider, quote?.bid_ask_feed ?? quote?.feed);
   const bidAskAge = quote?.bid_ask_stale_seconds ?? null;
   const bidAskIsOld = bidAskAge !== null && bidAskAge > 120;
@@ -856,21 +885,32 @@ export function TickerDetailsView() {
         </section>
       ) : (
         <>
-          <section className="details-hero panel">
+          <section className={`details-hero panel${marketClosed ? " is-closed" : ""}`}>
+            {marketClosed ? (
+              <div className="details-hero-closed-banner" role="status">
+                <span className="details-closed-dot" aria-hidden="true" />
+                <div>
+                  <strong>U.S. markets are closed for the weekend</strong>
+                  <p>Showing the last close. Live quotes and charting resume when trading reopens (Sunday 8:00 PM ET).</p>
+                </div>
+              </div>
+            ) : null}
             <div className="details-hero-main">
-              <span className="details-symbol">Current Price</span>
+              <span className="details-symbol">{marketClosed ? "Last Close" : "Current Price"}</span>
               <strong>{quote ? formatCurrency(latestPrice) : "Latest data unavailable"}</strong>
               <div className="details-bid-ask" aria-label="Bid and ask">
                 <span className="details-bid-ask-pair">
                   <span>Bid</span>
-                  <strong>{hasBidAsk ? formatCurrency(quote?.bid_price ?? null) : "--"}</strong>
+                  <strong>{showBidAsk ? formatCurrency(quote?.bid_price ?? null) : "--"}</strong>
                 </span>
                 <span className="details-bid-ask-divider">/</span>
                 <span className="details-bid-ask-pair">
                   <span>Ask</span>
-                  <strong>{hasBidAsk ? formatCurrency(quote?.ask_price ?? null) : "--"}</strong>
+                  <strong>{showBidAsk ? formatCurrency(quote?.ask_price ?? null) : "--"}</strong>
                 </span>
-                {yahooFallbackActive ? (
+                {marketClosed ? (
+                  <span className="details-bid-ask-age">Unavailable while markets are closed</span>
+                ) : yahooFallbackActive ? (
                   <span className="details-bid-ask-age">Unavailable during Yahoo fallback</span>
                 ) : hasBidAsk ? (
                   <span className={`details-bid-ask-age${bidAskIsOld ? " is-old" : ""}`}>
@@ -881,13 +921,23 @@ export function TickerDetailsView() {
               </div>
             </div>
             <div className="details-hero-meta" aria-label="Market data status">
-              <span>
-                Status: {quoteStatus}
-                {quote?.is_stale && quote.stale_seconds !== null ? ` (${formatAge(quote.stale_seconds)})` : ""}
-              </span>
-              <span>Source: {providerFeed}{providerFeed !== activeProviderFeed && activeProviderFeed !== "--" ? ` (active: ${activeProviderFeed})` : ""}</span>
-              <span>Session: {safeText(quote?.market_session, "--")}</span>
-              <span>Price time: {formatDateTime(liveQuoteTimestamp)}</span>
+              {marketClosed ? (
+                <>
+                  <span>Status: Markets closed</span>
+                  <span>U.S. equities · Weekend</span>
+                  <span>Last close: {formatDateTime(liveQuoteTimestamp)}</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    Status: {quoteStatus}
+                    {quote?.is_stale && quote.stale_seconds !== null ? ` (${formatAge(quote.stale_seconds)})` : ""}
+                  </span>
+                  <span>Source: {providerFeed}{providerFeed !== activeProviderFeed && activeProviderFeed !== "--" ? ` (active: ${activeProviderFeed})` : ""}</span>
+                  <span>Session: {safeText(quote?.market_session, "--")}</span>
+                  <span>Price time: {formatDateTime(liveQuoteTimestamp)}</span>
+                </>
+              )}
             </div>
           </section>
 
@@ -897,13 +947,24 @@ export function TickerDetailsView() {
                 <div className="panel-header">
                   <div>
                     <h2>Price Chart</h2>
-                    <p>1-minute price action for the last hour, including the latest live quote.</p>
+                    <p>
+                      {marketClosed
+                        ? "Live charting resumes when U.S. markets reopen."
+                        : "1-minute price action for the last hour, including the latest live quote."}
+                    </p>
                   </div>
                 </div>
-                {refreshState.warning ? (
+                {!marketClosed && refreshState.warning ? (
                   <p className="details-refresh-warning">Refresh issue: {refreshState.warning}</p>
                 ) : null}
-                {candles.length === 0 && !quote ? (
+                {marketClosed ? (
+                  <div className="details-panel-state">
+                    <EmptyState
+                      message="Live charting is paused while U.S. markets are closed for the weekend. Intraday data resumes when trading reopens (Sunday 8:00 PM ET)."
+                      title="Markets closed"
+                    />
+                  </div>
+                ) : candles.length === 0 && !quote ? (
                   <div className="details-panel-state">
                     <EmptyState
                       message="No quote or candle data is available for LITE yet."
