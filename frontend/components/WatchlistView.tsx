@@ -11,50 +11,78 @@ import { LoadingState } from "@/components/LoadingState";
 import {
   api,
   type DecimalValue,
+  type MarketQuote,
   type MarketSubscriptionPlan,
   type SymbolSearchResult,
   type WatchlistItem,
   type WatchlistTag,
 } from "@/lib/api";
 
+type SubscriptionSource = "auto" | "manual" | "none";
+
 // Warn once realtime subscriptions reach this share of the Alpaca free-tier cap.
 const SUBSCRIPTION_WARN_RATIO = 0.8;
 
-function SubscriptionUsageBanner({ plan }: { plan: MarketSubscriptionPlan }) {
+function SubscriptionUsageBanner({ plan, onManage }: { plan: MarketSubscriptionPlan; onManage: () => void }) {
   const max = Math.max(plan.max_symbols, 1);
   const ratio = Math.min(plan.subscribed_count / max, 1);
   const overCap = plan.overflow_count > 0;
   const nearCap = !overCap && plan.subscribed_count >= max * SUBSCRIPTION_WARN_RATIO;
   const tone = overCap ? "is-over" : nearCap ? "is-near" : "is-ok";
+  const manualCount = Math.max(plan.subscribed_count - plan.holdings_count, 0);
   return (
     <section className={`subscription-usage ${tone}`} aria-label="Realtime subscription usage">
-      <div className="subscription-usage-head">
-        <span className="subscription-usage-title">Realtime market data</span>
-        <span className="subscription-usage-count">
-          {plan.subscribed_count} / {plan.max_symbols} symbols
-        </span>
+      <div className="subscription-usage-main">
+        <div className="subscription-usage-head">
+          <span className="subscription-usage-title">Market data subscriptions</span>
+          <span className="subscription-usage-count">
+            {plan.subscribed_count} / {plan.max_symbols} symbols used
+          </span>
+        </div>
+        <div className="subscription-usage-bar" role="presentation">
+          <span style={{ width: `${ratio * 100}%` }} />
+        </div>
+        <p className="subscription-usage-detail">
+          {plan.holdings_count} holdings auto-subscribed · {manualCount} manually subscribed
+          {overCap
+            ? ` · ${plan.overflow_count} over limit: ${plan.excluded_symbols.join(", ")}`
+            : nearCap
+              ? " · approaching the free-tier limit"
+              : ""}
+        </p>
       </div>
-      <div className="subscription-usage-bar" role="presentation">
-        <span style={{ width: `${ratio * 100}%` }} />
-      </div>
-      <p className="subscription-usage-detail">
-        {plan.holdings_count} held (auto-subscribed) · {plan.watchlist_realtime_count} watchlist realtime
-        {overCap
-          ? ` · ${plan.overflow_count} not subscribed: ${plan.excluded_symbols.join(", ")}`
-          : nearCap
-            ? " · approaching the Alpaca free-tier limit"
-            : ""}
-      </p>
+      <button className="secondary-button subscription-usage-manage" onClick={onManage} type="button">
+        Manage subscription
+      </button>
     </section>
   );
+}
+
+function SubscriptionBadge({ source }: { source: SubscriptionSource }) {
+  if (source === "auto") {
+    return (
+      <span className="sub-badge sub-badge-auto" title="Auto-subscribed because you hold this position">
+        RT
+      </span>
+    );
+  }
+  if (source === "manual") {
+    return (
+      <span className="sub-badge sub-badge-manual" title="Manually subscribed to realtime data">
+        subscribed
+      </span>
+    );
+  }
+  return null;
 }
 
 const MAX_TAGS_PER_TICKER = 5;
 const MAX_TAGS_PER_REQUEST = 5;
 const MAX_SELECTED_FILTER_TAGS = 5;
+const TAG_FILTER_COLLAPSED_COUNT = 6;
 const PAGE_SIZE = 10;
 const DEFAULT_TAG_COLOR = "#F7DFA6";
-const EMPTY_TICKER_FORM: TickerForm = { symbol: "", tags: "", notes: "" };
+const EMPTY_TICKER_FORM: TickerForm = { symbol: "", displayName: "", selectedTags: [], newTag: "", notes: "" };
 
 type WatchlistRow = WatchlistItem & {
   status: string;
@@ -64,7 +92,9 @@ type WatchlistRow = WatchlistItem & {
 
 type TickerForm = {
   symbol: string;
-  tags: string;
+  displayName: string;
+  selectedTags: string[];
+  newTag: string;
   notes: string;
 };
 
@@ -130,14 +160,6 @@ function addUniqueTags(current: string[], additions: string[]): string[] {
   return next;
 }
 
-function pnlClass(value: DecimalValue): string {
-  const number = decimalNumber(value);
-  if (number === null || number === 0) {
-    return "";
-  }
-  return number > 0 ? "pnl-positive" : "pnl-negative";
-}
-
 function tagColor(tag: string, tags: WatchlistTag[]): string {
   return tags.find((item) => item.name.toLocaleLowerCase() === tag.toLocaleLowerCase())?.color ?? DEFAULT_TAG_COLOR;
 }
@@ -153,7 +175,7 @@ export function WatchlistView() {
   const [manageTickersOpen, setManageTickersOpen] = useState(false);
   const [manageTagsOpen, setManageTagsOpen] = useState(false);
   const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
-  const [form, setForm] = useState<TickerForm>({ symbol: "", tags: "", notes: "" });
+  const [form, setForm] = useState<TickerForm>(EMPTY_TICKER_FORM);
   const [tagForm, setTagForm] = useState("");
   const [activeTickerPopoverSymbol, setActiveTickerPopoverSymbol] = useState<string | null>(null);
   const [tickerPopoverPosition, setTickerPopoverPosition] = useState<TagPopoverPosition | null>(null);
@@ -172,6 +194,9 @@ export function WatchlistView() {
   const [isSymbolSearching, setIsSymbolSearching] = useState(false);
   const [symbolSearchError, setSymbolSearchError] = useState<string | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<MarketSubscriptionPlan | null>(null);
+  const [quotes, setQuotes] = useState<Record<string, MarketQuote>>({});
+  const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
+  const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -193,25 +218,26 @@ export function WatchlistView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function loadSubscriptionData() {
+    // Subscription usage + quotes are best-effort: a failure here must not
+    // block the watchlist itself, so they load separately and degrade silently.
+    try {
+      const [plan, quoteRows] = await Promise.all([api.marketSubscriptionPlan(), api.marketQuotes()]);
+      setSubscriptionPlan(plan);
+      const map: Record<string, MarketQuote> = {};
+      for (const quote of quoteRows) {
+        map[quote.symbol.toUpperCase()] = quote;
+      }
+      setQuotes(map);
+    } catch {
+      setSubscriptionPlan(null);
+      setQuotes({});
+    }
+  }
+
   useEffect(() => {
-    // Subscription usage is best-effort: a failure here must not block the
-    // watchlist itself, so it loads separately and silently degrades.
-    let active = true;
-    api
-      .marketSubscriptionPlan()
-      .then((plan) => {
-        if (active) {
-          setSubscriptionPlan(plan);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setSubscriptionPlan(null);
-        }
-      });
-    return () => {
-      active = false;
-    };
+    loadSubscriptionData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -358,7 +384,7 @@ export function WatchlistView() {
   async function addTicker(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const symbol = form.symbol.trim().toUpperCase();
-    const parsedTags = parseTags(form.tags);
+    const parsedTags = addUniqueTags(form.selectedTags, parseTags(form.newTag));
     if (!symbol) {
       setDialogError("Symbol is required.");
       return;
@@ -373,6 +399,7 @@ export function WatchlistView() {
       await api.createWatchlistTicker({
         symbol,
         tags: parsedTags,
+        display_name: form.displayName.trim() || null,
         notes: form.notes.trim() || null,
       });
       resetTickerForm();
@@ -559,6 +586,24 @@ export function WatchlistView() {
     }
   }
 
+  async function toggleSubscription(item: WatchlistItem) {
+    if (item.has_position) {
+      // Holdings auto-subscribe and are locked; nothing to toggle.
+      return;
+    }
+    const next = !item.realtime_enabled;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await api.updateWatchlistTicker(item.symbol, { realtime_enabled: next });
+      await Promise.all([loadWatchlist(), loadSubscriptionData()]);
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Request failed.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function clearSelectedTags() {
     setSelectedTags([]);
     setHoldingOnly(false);
@@ -591,10 +636,43 @@ export function WatchlistView() {
   }
 
   function selectSymbolResult(result: SymbolSearchResult) {
-    setForm((current) => ({ ...current, symbol: result.symbol.toUpperCase() }));
+    setForm((current) => ({
+      ...current,
+      symbol: result.symbol.toUpperCase(),
+      // Autofill the company name from search; keep any name the user already typed.
+      displayName: current.displayName.trim() || (result.name ?? ""),
+    }));
     setSymbolResults([]);
     setSymbolSearchOpen(false);
     setSymbolSearchError(null);
+  }
+
+  function toggleAddFormTag(tagName: string) {
+    setForm((current) => {
+      const exists = current.selectedTags.some((tag) => tag.toLocaleLowerCase() === tagName.toLocaleLowerCase());
+      if (exists) {
+        return {
+          ...current,
+          selectedTags: current.selectedTags.filter((tag) => tag.toLocaleLowerCase() !== tagName.toLocaleLowerCase()),
+        };
+      }
+      if (current.selectedTags.length >= MAX_TAGS_PER_TICKER) {
+        setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
+        return current;
+      }
+      setDialogError(null);
+      return { ...current, selectedTags: [...current.selectedTags, tagName] };
+    });
+  }
+
+  function addNewFormTag() {
+    const next = addUniqueTags(form.selectedTags, parseTags(form.newTag));
+    if (next.length > MAX_TAGS_PER_TICKER) {
+      setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
+      return;
+    }
+    setDialogError(null);
+    setForm((current) => ({ ...current, selectedTags: next, newTag: "" }));
   }
 
   function resetTickerForm() {
@@ -699,11 +777,78 @@ export function WatchlistView() {
   const holdingCount = items?.filter((item) => item.has_position).length ?? 0;
   const allFiltersCleared = selectedTags.length === 0 && !holdingOnly;
 
+  const subscribedSet = useMemo(
+    () => new Set((subscriptionPlan?.symbols ?? []).map((symbol) => symbol.toUpperCase())),
+    [subscriptionPlan],
+  );
+  const capReached = subscriptionPlan ? subscriptionPlan.subscribed_count >= subscriptionPlan.max_symbols : false;
+
+  function subscriptionSource(item: WatchlistItem): SubscriptionSource {
+    if (item.has_position) {
+      return "auto";
+    }
+    if (item.realtime_enabled) {
+      return "manual";
+    }
+    return "none";
+  }
+
+  function isSubscribed(item: WatchlistItem): boolean {
+    return item.has_position || subscribedSet.has(item.symbol.toUpperCase());
+  }
+
+  function priceFor(item: WatchlistItem): DecimalValue {
+    if (!isSubscribed(item)) {
+      return null;
+    }
+    const quote = quotes[item.symbol.toUpperCase()];
+    return quote?.last_price ?? item.current_price;
+  }
+
+  const manualSymbolSet = useMemo(
+    () =>
+      new Set(
+        (items ?? [])
+          .filter((item) => item.realtime_enabled && !item.has_position)
+          .map((item) => item.symbol.toUpperCase()),
+      ),
+    [items],
+  );
+  // Green: actually-streaming symbols that aren't manual = holdings (locked).
+  const poolAuto = useMemo(
+    () => Array.from(subscribedSet).filter((symbol) => !manualSymbolSet.has(symbol)).sort(),
+    [subscribedSet, manualSymbolSet],
+  );
+  const poolManual = useMemo(
+    () =>
+      (items ?? [])
+        .filter((item) => item.realtime_enabled && !item.has_position)
+        .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+    [items],
+  );
+  const poolNone = useMemo(
+    () =>
+      (items ?? [])
+        .filter((item) => !item.has_position && !item.realtime_enabled)
+        .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+    [items],
+  );
+
   const columns: DataTableColumn<WatchlistRow>[] = [
     {
       key: "symbol",
       header: "Symbol",
-      render: (value) => <strong className="watchlist-symbol">{String(value)}</strong>,
+      render: (_, row) => (
+        <div className="watchlist-symbol-cell">
+          <div className="watchlist-symbol-line">
+            <Link className="watchlist-symbol-link" href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}>
+              {row.symbol}
+            </Link>
+            <SubscriptionBadge source={subscriptionSource(row)} />
+          </div>
+          {row.display_name ? <span className="watchlist-symbol-company">{row.display_name}</span> : null}
+        </div>
+      ),
     },
     {
       key: "tagList",
@@ -722,7 +867,7 @@ export function WatchlistView() {
     },
     {
       key: "status",
-      header: "Position Status",
+      header: "Status",
       align: "center",
       render: (_, row) =>
         row.has_position ? (
@@ -733,14 +878,21 @@ export function WatchlistView() {
           </span>
         ),
     },
-    { key: "position_quantity", header: "Quantity", align: "center", render: (value) => formatNumber(value as DecimalValue, 4) },
-    { key: "current_price", header: "Current Price", align: "center", render: (value) => formatNumber(value as DecimalValue) },
-    { key: "market_value", header: "Market Value", align: "center", render: (value) => formatNumber(value as DecimalValue) },
     {
-      key: "unrealized_pnl",
-      header: "Unrealized P/L",
-      align: "center",
-      render: (value) => <span className={pnlClass(value as DecimalValue)}>{formatNumber(value as DecimalValue)}</span>,
+      key: "current_price",
+      header: "Price",
+      align: "right",
+      render: (_, row) => {
+        const price = priceFor(row);
+        return price === null ? <span className="watchlist-muted">—</span> : <span>{formatNumber(price)}</span>;
+      },
+    },
+    {
+      key: "market_value",
+      header: "Mkt value",
+      align: "right",
+      render: (value, row) =>
+        row.has_position ? <span>{formatNumber(value as DecimalValue)}</span> : <span className="watchlist-muted">—</span>,
     },
     { key: "notes", header: "Notes", render: (value) => String(value ?? "--") },
     {
@@ -750,13 +902,17 @@ export function WatchlistView() {
       render: (_, row) => (
         <span className="watchlist-actions">
           <Link className="small-action-link" href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}>
-            View Details
+            Details
           </Link>
-          <button className="text-action" disabled={isSaving} onClick={() => startEdit(row)} type="button">
-            Edit
-          </button>
-          <button className="text-action text-action-danger" disabled={isSaving} onClick={() => deleteTicker(row.symbol)} type="button">
-            Delete
+          <button
+            aria-label={`Edit ${row.symbol}`}
+            className="icon-action"
+            disabled={isSaving}
+            onClick={() => startEdit(row)}
+            title="Edit ticker"
+            type="button"
+          >
+            ✎
           </button>
         </span>
       ),
@@ -773,15 +929,17 @@ export function WatchlistView() {
         </div>
         <div className="watchlist-header-actions">
           <button className="secondary-button" onClick={openManageTags} type="button">
-            Manage Tags
+            Manage tags
           </button>
           <button className="action-button" onClick={openManageTickers} type="button">
-            Manage Tickers
+            Add ticker
           </button>
         </div>
       </div>
 
-      {subscriptionPlan ? <SubscriptionUsageBanner plan={subscriptionPlan} /> : null}
+      {subscriptionPlan ? (
+        <SubscriptionUsageBanner plan={subscriptionPlan} onManage={() => setManageSubscriptionOpen(true)} />
+      ) : null}
 
       <section className="panel watchlist-panel">
         <div className="panel-header positions-panel-header">
@@ -808,25 +966,28 @@ export function WatchlistView() {
           </div>
         </div>
         <div className="tag-filter" aria-label="Watchlist tag filter">
-          <button
-            aria-pressed={allFiltersCleared}
-            className={`tag-filter-button${allFiltersCleared ? " tag-filter-button-active" : ""}`}
-            onClick={clearSelectedTags}
-            type="button"
-          >
-            All
-          </button>
-          <button
-            aria-pressed={holdingOnly}
-            className={`tag-filter-button holding-filter-button${holdingOnly ? " tag-filter-button-active holding-filter-button-active" : ""}`}
-            onClick={toggleHoldingFilter}
-            type="button"
-          >
-            <span className="holding-filter-dot" />
-            {holdingOnly ? <span className="tag-filter-check">✓</span> : null}
-            Holding <span>{holdingCount}</span>
-          </button>
-          {tags.map((tag) => {
+          <div className="tag-filter-system" role="group" aria-label="System filters">
+            <button
+              aria-pressed={allFiltersCleared}
+              className={`tag-filter-button tag-filter-system-button${allFiltersCleared ? " tag-filter-button-active" : ""}`}
+              onClick={clearSelectedTags}
+              type="button"
+            >
+              All
+            </button>
+            <button
+              aria-pressed={holdingOnly}
+              className={`tag-filter-button tag-filter-system-button holding-filter-button${holdingOnly ? " tag-filter-button-active holding-filter-button-active" : ""}`}
+              onClick={toggleHoldingFilter}
+              type="button"
+            >
+              <span className="holding-filter-dot" />
+              {holdingOnly ? <span className="tag-filter-check">✓</span> : null}
+              Holding <span>{holdingCount}</span>
+            </button>
+          </div>
+          {tags.length > 0 ? <span className="tag-filter-divider" aria-hidden="true" /> : null}
+          {(tagFilterExpanded ? tags : tags.slice(0, TAG_FILTER_COLLAPSED_COUNT)).map((tag) => {
             const selected = selectedTags.some(
               (selectedTag) => selectedTag.toLocaleLowerCase() === tag.name.toLocaleLowerCase(),
             );
@@ -846,7 +1007,17 @@ export function WatchlistView() {
               </button>
             );
           })}
+          {tags.length > TAG_FILTER_COLLAPSED_COUNT ? (
+            <button
+              className="tag-filter-button tag-filter-more"
+              onClick={() => setTagFilterExpanded((value) => !value)}
+              type="button"
+            >
+              {tagFilterExpanded ? "Show less" : `+${tags.length - TAG_FILTER_COLLAPSED_COUNT} more`}
+            </button>
+          ) : null}
         </div>
+        <p className="tag-filter-info">All / Holding are system filters and can&apos;t be edited or removed.</p>
         {filterNotice ? <p className="filter-notice">{filterNotice}</p> : null}
         {error ? <ErrorState message={error} title="Watchlist request failed" /> : null}
         {isLoading ? (
@@ -882,12 +1053,122 @@ export function WatchlistView() {
         )}
       </section>
 
+      {subscriptionPlan ? (
+        <section className="panel subscription-pool-card">
+          <div className="panel-header">
+            <div>
+              <h2>Subscription pool</h2>
+              <p>
+                Symbols receiving market data. Holdings subscribe automatically; add manual symbols up to the{" "}
+                {subscriptionPlan.max_symbols}-symbol limit.
+              </p>
+            </div>
+            <button className="secondary-button" onClick={openManageTickers} type="button">
+              Add symbol
+            </button>
+          </div>
+          <div className="subscription-pool-chips">
+            {poolAuto.length === 0 && poolManual.length === 0 && poolNone.length === 0 ? (
+              <span className="watchlist-muted">No symbols yet.</span>
+            ) : null}
+            {poolAuto.map((symbol) => (
+              <span className="sub-chip sub-chip-auto" key={`auto-${symbol}`} title="Holding · auto-subscribed (locked)">
+                {symbol}
+                <span className="sub-chip-icon" aria-hidden="true">🔒</span>
+              </span>
+            ))}
+            {poolManual.map((item) => (
+              <button
+                className="sub-chip sub-chip-manual"
+                disabled={isSaving}
+                key={`manual-${item.symbol}`}
+                onClick={() => toggleSubscription(item)}
+                title="Manually subscribed · click to unsubscribe"
+                type="button"
+              >
+                {item.symbol}
+                <span className="sub-chip-icon" aria-hidden="true">×</span>
+              </button>
+            ))}
+            {poolNone.map((item) => (
+              <button
+                className="sub-chip sub-chip-none"
+                disabled={isSaving || capReached}
+                key={`none-${item.symbol}`}
+                onClick={() => toggleSubscription(item)}
+                title={capReached ? "Subscription limit reached" : "Delayed only · click to subscribe"}
+                type="button"
+              >
+                {item.symbol}
+                <span className="sub-chip-icon" aria-hidden="true">+</span>
+              </button>
+            ))}
+          </div>
+          <div className="subscription-pool-legend">
+            <span>
+              <span className="legend-dot legend-dot-auto" /> Holding (auto, locked)
+            </span>
+            <span>
+              <span className="legend-dot legend-dot-manual" /> Manual subscription
+            </span>
+            <span>
+              <span className="legend-dot legend-dot-none" /> Delayed only
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      <BaseModal
+        className="manage-subscription-modal"
+        description={
+          subscriptionPlan
+            ? `${subscriptionPlan.subscribed_count} / ${subscriptionPlan.max_symbols} symbols used. Holdings subscribe automatically and are locked.`
+            : "Holdings subscribe automatically and are locked."
+        }
+        isOpen={manageSubscriptionOpen}
+        onClose={() => setManageSubscriptionOpen(false)}
+        title="Manage subscription"
+      >
+        <div className="subscription-manage-list">
+          {(items ?? []).length === 0 ? <EmptyState message="No watchlist tickers yet." /> : null}
+          {(items ?? []).map((item) => {
+            const source = subscriptionSource(item);
+            const locked = item.has_position;
+            const on = source !== "none";
+            const disableEnable = !on && !locked && capReached;
+            return (
+              <div className="subscription-manage-row" key={item.id}>
+                <div className="subscription-manage-symbol">
+                  <strong>{item.symbol}</strong>
+                  {item.display_name ? <span>{item.display_name}</span> : null}
+                </div>
+                {locked ? (
+                  <span className="sub-badge sub-badge-auto" title="Auto-subscribed because you hold this position">
+                    RT · locked
+                  </span>
+                ) : (
+                  <button
+                    className={`subscription-toggle${on ? " is-on" : ""}`}
+                    disabled={isSaving || disableEnable}
+                    onClick={() => toggleSubscription(item)}
+                    title={disableEnable ? "Subscription limit reached" : on ? "Click to unsubscribe" : "Click to subscribe"}
+                    type="button"
+                  >
+                    {on ? "Subscribed" : disableEnable ? "Limit reached" : "Subscribe"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </BaseModal>
+
       <BaseModal
         className="manage-tickers-modal"
-        description="Add, edit, or delete tickers in your personal watchlist. Tags can be comma-separated."
+        description="Add, edit, or delete tickers in your personal watchlist. Pick existing tags or create new ones."
         isOpen={manageTickersOpen}
         onClose={closeManageTickers}
-        title="Manage Tickers"
+        title="Add ticker"
       >
         <div className="tag-manager manage-tickers-manager">
           <section className="tag-manager-section manage-tickers-fixed-section">
@@ -948,13 +1229,68 @@ export function WatchlistView() {
                 </div>
               </div>
               <label className="filter-field">
-                <span>Tags</span>
+                <span>Company name</span>
                 <input
-                  onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
-                  placeholder="CPO, Optical, AI Infra"
-                  value={form.tags}
+                  onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))}
+                  placeholder="Optional — auto-filled from symbol"
+                  value={form.displayName}
                 />
               </label>
+              <div className="filter-field">
+                <span>Tags</span>
+                <div className="add-ticker-tags">
+                  {tags.length === 0 ? (
+                    <span className="tag-manager-help">No tags yet — create one below.</span>
+                  ) : (
+                    tags.map((tag) => {
+                      const checked = form.selectedTags.some(
+                        (selected) => selected.toLocaleLowerCase() === tag.name.toLocaleLowerCase(),
+                      );
+                      return (
+                        <button
+                          aria-pressed={checked}
+                          className={`tag-checkbox${checked ? " is-checked" : ""}`}
+                          key={tag.id}
+                          onClick={() => toggleAddFormTag(tag.name)}
+                          type="button"
+                        >
+                          <span className="tag-checkbox-dot" style={{ backgroundColor: tag.color ?? DEFAULT_TAG_COLOR }} />
+                          {checked ? <span className="tag-filter-check">✓</span> : null}
+                          {tag.name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="add-ticker-newtag">
+                  <input
+                    onChange={(event) => setForm((current) => ({ ...current, newTag: event.target.value }))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addNewFormTag();
+                      }
+                    }}
+                    placeholder="New tag"
+                    value={form.newTag}
+                  />
+                  <button className="secondary-button" disabled={!form.newTag.trim()} onClick={addNewFormTag} type="button">
+                    Add tag
+                  </button>
+                </div>
+                {form.selectedTags.length > 0 ? (
+                  <div className="add-ticker-selected">
+                    {form.selectedTags.map((tag) => (
+                      <span className="tag-pill soft-chip" key={tag} style={{ backgroundColor: tagColor(tag, tags) }}>
+                        {tag}
+                        <button aria-label={`Remove ${tag}`} onClick={() => toggleAddFormTag(tag)} type="button">
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <label className="filter-field">
                 <span>Notes</span>
                 <input

@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.main import create_app
 from app.models import LotAnalysisDaily, RawFlexReport, WatchlistTicker
 from app.services.market_data_subscription import MarketDataSubscriptionService
+from app.services.watchlist import WatchlistService
 
 
 def make_settings() -> Settings:
@@ -154,6 +155,44 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
         # Well under the cap, so everything subscribes and nothing is excluded.
         self.assertEqual(plan.overflow_count, 0)
         self.assertEqual(plan.warnings, [])
+
+    def _seed_two_holdings(self) -> None:
+        with self.session_factory() as db:
+            report = RawFlexReport(
+                query_id="cap-test",
+                xml_path=str(Path(self.temp_dir.name) / "cap.xml"),
+                xml_sha256="cap-test",
+                downloaded_at=datetime(2026, 6, 8, tzinfo=UTC),
+                status="parsed",
+            )
+            db.add(report)
+            db.flush()
+            db.add_all(
+                [
+                    LotAnalysisDaily(report_date=date(2026, 6, 8), account_id="T", symbol="AAPL",
+                                     conid="1", total_quantity=Decimal("2"), raw_flex_report_id=report.id),
+                    LotAnalysisDaily(report_date=date(2026, 6, 8), account_id="T", symbol="MSFT",
+                                     conid="2", total_quantity=Decimal("1"), raw_flex_report_id=report.id),
+                ]
+            )
+            db.commit()
+
+    def test_manual_realtime_subscription_respects_cap(self) -> None:
+        self._seed_two_holdings()
+        service = WatchlistService()
+        # holdings=2, cap=3 -> first manual subscription fits.
+        with self.session_factory() as db:
+            service.upsert_item(db, symbol="NVDA", realtime_enabled=True, max_symbols=3)
+        # holdings(2) + manual(NVDA, TSLA) = 4 > 3 -> rejected.
+        with self.session_factory() as db:
+            with self.assertRaises(ValueError):
+                service.upsert_item(db, symbol="TSLA", realtime_enabled=True, max_symbols=3)
+        # Holdings auto-subscribe and are never blocked, even at/over cap.
+        with self.session_factory() as db:
+            service.upsert_item(db, symbol="AAPL", realtime_enabled=True, max_symbols=3)
+        # No cap passed -> enforcement is off (internal callers stay uncapped).
+        with self.session_factory() as db:
+            service.upsert_item(db, symbol="TSLA", realtime_enabled=True)
 
     def test_preview_api_uses_configured_max_symbols_without_alpaca_credentials(self) -> None:
         self._seed_subscription_candidates()

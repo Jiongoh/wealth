@@ -68,6 +68,7 @@ export type WatchlistItem = {
   symbol: string;
   display_name: string | null;
   notes: string | null;
+  realtime_enabled: boolean;
   tags: string[];
   has_position: boolean;
   latest_report_date: string | null;
@@ -90,6 +91,7 @@ export type WatchlistPayload = {
   tags?: string[];
   display_name?: string | null;
   notes?: string | null;
+  realtime_enabled?: boolean;
 };
 
 export type SymbolSearchResult = {

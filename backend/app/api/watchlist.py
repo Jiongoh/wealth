@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas import (
     WatchlistItemResponse,
@@ -28,6 +29,7 @@ def get_watchlist(
 def create_watchlist_ticker(
     payload: WatchlistTickerCreate,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
     symbol = payload.symbol.strip()
     if not symbol:
@@ -40,6 +42,7 @@ def create_watchlist_ticker(
             display_name=payload.display_name,
             notes=payload.notes,
             realtime_enabled=payload.realtime_enabled,
+            max_symbols=settings.alpaca_max_symbols,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -89,6 +92,7 @@ def update_watchlist_ticker(
     symbol: str,
     payload: WatchlistTickerUpdate,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
     fields = payload.model_fields_set
     try:
@@ -103,6 +107,7 @@ def update_watchlist_ticker(
             display_name_provided="display_name" in fields,
             notes_provided="notes" in fields,
             realtime_enabled_provided="realtime_enabled" in fields,
+            max_symbols=settings.alpaca_max_symbols,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

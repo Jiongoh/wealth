@@ -78,6 +78,7 @@ class WatchlistService:
         display_name: str | None = None,
         notes: str | None = None,
         realtime_enabled: bool | None = None,
+        max_symbols: int | None = None,
     ) -> dict[str, object]:
         normalized_symbol = _normalize_symbol(symbol)
         ticker = _get_ticker(db, normalized_symbol)
@@ -91,6 +92,8 @@ class WatchlistService:
         if notes is not None:
             ticker.notes = _blank_to_none(notes)
         if realtime_enabled is not None:
+            if realtime_enabled and not ticker.realtime_enabled:
+                self._assert_realtime_capacity(db, symbol=normalized_symbol, max_symbols=max_symbols)
             ticker.realtime_enabled = realtime_enabled
         if tags is not None:
             _replace_tags(db, ticker, tags)
@@ -112,6 +115,7 @@ class WatchlistService:
         display_name_provided: bool = False,
         notes_provided: bool = False,
         realtime_enabled_provided: bool = False,
+        max_symbols: int | None = None,
     ) -> dict[str, object] | None:
         ticker = _get_ticker(db, symbol)
         if ticker is None:
@@ -121,6 +125,8 @@ class WatchlistService:
         if notes_provided:
             ticker.notes = _blank_to_none(notes)
         if realtime_enabled_provided:
+            if bool(realtime_enabled) and not ticker.realtime_enabled:
+                self._assert_realtime_capacity(db, symbol=ticker.symbol, max_symbols=max_symbols)
             ticker.realtime_enabled = bool(realtime_enabled)
         if tags_provided:
             _replace_tags(db, ticker, tags or [])
@@ -128,6 +134,34 @@ class WatchlistService:
         db.commit()
         db.refresh(ticker)
         return self.get_item(db, ticker.symbol)
+
+    def _assert_realtime_capacity(self, db: Session, *, symbol: str, max_symbols: int | None) -> None:
+        """Reject manual realtime subscriptions that would exceed the Alpaca cap.
+
+        Holdings auto-subscribe and are never blocked; the cap only gates
+        manually-enabled non-held symbols. Enforcement is opt-in (the API passes
+        the configured limit) so internal callers/tests keep working uncapped.
+        """
+        if max_symbols is None:
+            return
+        positions = _current_positions(db)
+        holdings = {sym for sym, snap in positions.items() if snap.has_position}
+        normalized = _normalize_symbol(symbol)
+        if normalized in holdings:
+            return
+        manual = {
+            ticker.symbol
+            for ticker in db.scalars(
+                select(WatchlistTicker).where(WatchlistTicker.realtime_enabled.is_(True))
+            ).all()
+            if ticker.symbol not in holdings
+        }
+        manual.add(normalized)
+        if len(holdings | manual) > max_symbols:
+            raise ValueError(
+                f"Realtime subscription limit reached ({max_symbols}). "
+                "Unsubscribe another symbol before subscribing a new one."
+            )
 
     def delete_item(self, db: Session, symbol: str) -> bool:
         ticker = _get_ticker(db, symbol)

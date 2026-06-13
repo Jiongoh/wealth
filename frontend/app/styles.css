@@ -19,6 +19,13 @@
   --negative: #ff7a66;
   --border: rgba(34, 35, 42, 0.08);
   --border-strong: rgba(34, 35, 42, 0.13);
+  /* Fixed semantic colors for the three subscription states (green/blue/grey). */
+  --sub-auto: #4f8a55;
+  --sub-auto-soft: rgba(79, 138, 85, 0.14);
+  --sub-manual: #2f6dbd;
+  --sub-manual-soft: rgba(47, 109, 189, 0.14);
+  --sub-none: #8c857a;
+  --sub-none-soft: rgba(140, 133, 122, 0.14);
   --shadow-soft: 0 14px 38px rgba(79, 61, 34, 0.07);
   --shadow-card: 0 8px 22px rgba(79, 61, 34, 0.05);
   --radius-xl: 32px;
@@ -2063,6 +2070,333 @@ h1 {
 .subscription-usage.is-over .subscription-usage-detail {
   color: #a4520f;
   font-weight: 600;
+}
+
+/* Banner becomes a row: usage block grows, Manage button sits at the right. */
+.subscription-usage {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.subscription-usage-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.subscription-usage-manage {
+  flex-shrink: 0;
+}
+
+/* Subscription badges next to the symbol. */
+.sub-badge {
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sub-badge-auto {
+  background: var(--sub-auto-soft);
+  color: var(--sub-auto);
+}
+
+.sub-badge-manual {
+  background: var(--sub-manual-soft);
+  color: var(--sub-manual);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Symbol cell with company subtitle. */
+.watchlist-symbol-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.watchlist-symbol-line {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.watchlist-symbol-link {
+  color: var(--text);
+  font-weight: 720;
+  text-decoration: none;
+}
+
+.watchlist-symbol-link:hover {
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+
+.watchlist-symbol-company {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-muted {
+  color: var(--text-muted);
+}
+
+/* Filter bar: system pills grouped + divider + info line. */
+.tag-filter-system {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.tag-filter-divider {
+  align-self: stretch;
+  background: var(--border-strong);
+  margin: 2px 4px;
+  width: 1px;
+}
+
+.tag-filter-more {
+  font-weight: 700;
+}
+
+.tag-filter-info {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* Pencil/icon action button in the table. */
+.icon-action {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 5px 8px;
+}
+
+.icon-action:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.icon-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Subscription pool card. */
+.subscription-pool-card {
+  margin-top: 20px;
+  padding-bottom: 22px;
+}
+
+.subscription-pool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 26px;
+}
+
+.sub-chip {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+  padding: 5px 11px;
+}
+
+.sub-chip-icon {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+button.sub-chip {
+  cursor: pointer;
+}
+
+button.sub-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sub-chip-auto {
+  background: var(--sub-auto-soft);
+  border-color: var(--sub-auto-soft);
+  color: var(--sub-auto);
+}
+
+.sub-chip-manual {
+  background: var(--sub-manual-soft);
+  border-color: var(--sub-manual-soft);
+  color: var(--sub-manual);
+}
+
+.sub-chip-manual:hover:not(:disabled) {
+  border-color: var(--sub-manual);
+}
+
+.sub-chip-none {
+  background: var(--sub-none-soft);
+  border-color: var(--sub-none-soft);
+  color: var(--sub-none);
+}
+
+.sub-chip-none:hover:not(:disabled) {
+  border-color: var(--sub-none);
+}
+
+.subscription-pool-legend {
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 0 26px;
+}
+
+.subscription-pool-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.legend-dot {
+  border-radius: 50%;
+  height: 9px;
+  width: 9px;
+}
+
+.legend-dot-auto {
+  background: var(--sub-auto);
+}
+
+.legend-dot-manual {
+  background: var(--sub-manual);
+}
+
+.legend-dot-none {
+  background: var(--sub-none);
+}
+
+/* Manage subscription modal. */
+.subscription-manage-list {
+  display: grid;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.subscription-manage-row {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.subscription-manage-symbol {
+  display: grid;
+  gap: 2px;
+}
+
+.subscription-manage-symbol span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.subscription-toggle {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 720;
+  padding: 6px 14px;
+  white-space: nowrap;
+}
+
+.subscription-toggle.is-on {
+  background: var(--sub-manual-soft);
+  border-color: var(--sub-manual-soft);
+  color: var(--sub-manual);
+}
+
+.subscription-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Add-ticker tag checkboxes. */
+.add-ticker-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-checkbox {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 6px;
+  padding: 5px 11px;
+}
+
+.tag-checkbox.is-checked {
+  border-color: var(--accent-deep);
+}
+
+.tag-checkbox-dot {
+  border-radius: 50%;
+  height: 9px;
+  width: 9px;
+}
+
+.add-ticker-newtag {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.add-ticker-newtag input {
+  flex: 1;
+}
+
+.add-ticker-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.add-ticker-selected .tag-pill button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  margin-left: 4px;
+  padding: 0;
 }
 
 .watchlist-panel {
