@@ -20,12 +20,12 @@
   --border: rgba(34, 35, 42, 0.08);
   --border-strong: rgba(34, 35, 42, 0.13);
   /* Fixed semantic colors for the three subscription states (green/blue/grey). */
-  --sub-auto: #4f8a55;
-  --sub-auto-soft: rgba(79, 138, 85, 0.14);
-  --sub-manual: #2f6dbd;
-  --sub-manual-soft: rgba(47, 109, 189, 0.14);
+  --sub-auto: #1a6e3a;
+  --sub-auto-soft: #eafdf2;
+  --sub-manual: #2d3b9b;
+  --sub-manual-soft: #e8ecfd;
   --sub-none: #8c857a;
-  --sub-none-soft: rgba(140, 133, 122, 0.14);
+  --sub-none-soft: rgba(140, 133, 122, 0.12);
   --shadow-soft: 0 14px 38px rgba(79, 61, 34, 0.07);
   --shadow-card: 0 8px 22px rgba(79, 61, 34, 0.05);
   --radius-xl: 32px;
@@ -2030,19 +2030,25 @@ h1 {
 }
 
 .subscription-usage-bar {
-  background: rgba(113, 90, 53, 0.14);
+  background: var(--sub-none-soft);
   border-radius: var(--radius-pill);
-  height: 7px;
+  display: flex;
+  height: 8px;
   margin: 10px 0 8px;
   overflow: hidden;
 }
 
-.subscription-usage-bar span {
-  background: #4f8a55;
-  border-radius: inherit;
-  display: block;
+.subscription-usage-seg {
   height: 100%;
   transition: width 0.3s ease;
+}
+
+.subscription-usage-seg-auto {
+  background: var(--sub-auto);
+}
+
+.subscription-usage-seg-manual {
+  background: var(--sub-manual);
 }
 
 .subscription-usage-detail {
@@ -2051,16 +2057,8 @@ h1 {
   line-height: 1.45;
 }
 
-.subscription-usage.is-near .subscription-usage-bar span {
-  background: #c9911f;
-}
-
 .subscription-usage.is-near {
   border-color: rgba(201, 145, 31, 0.5);
-}
-
-.subscription-usage.is-over .subscription-usage-bar span {
-  background: #b4521a;
 }
 
 .subscription-usage.is-over {
@@ -2132,6 +2130,29 @@ h1 {
 .watchlist-symbol-link:hover {
   color: var(--accent-deep);
   text-decoration: underline;
+}
+
+.watchlist-symbol-arrow {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 3px;
+}
+
+.watchlist-symbol-link:hover .watchlist-symbol-arrow {
+  color: var(--accent-deep);
+}
+
+.watchlist-table-footer {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 0 26px;
+  padding: 14px 0 4px;
 }
 
 .watchlist-symbol-company {
@@ -4487,5 +4508,78 @@ button.sub-chip:disabled {
 
   .tag-editor-add-row {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dark mode. Placed last so its token + surface overrides win the     */
+/* cascade. Colors are token-driven; cards that use light gradients in */
+/* the base theme are flattened to the dark surface here.              */
+/* ------------------------------------------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-background: #131419;
+    --surface: #1c1e26;
+    --surface-muted: #232530;
+    --surface-hover: #2a2d39;
+    --warm-card: #2a2d39;
+    --warm-card-soft: #232530;
+    --text: #ececf1;
+    --text-muted: #a39d92;
+    --accent: #f5c84c;
+    --accent-deep: #e3ad3a;
+    --positive: #5fce8e;
+    --negative: #ff8a78;
+    --border: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.17);
+    --sub-auto: #5fce8e;
+    --sub-auto-soft: rgba(95, 206, 142, 0.16);
+    --sub-manual: #8aa0ff;
+    --sub-manual-soft: rgba(138, 160, 255, 0.16);
+    --sub-none: #9a948a;
+    --sub-none-soft: rgba(255, 255, 255, 0.08);
+    --shadow-soft: 0 14px 38px rgba(0, 0, 0, 0.45);
+    --shadow-card: 0 8px 22px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Flatten light gradients that would wash out on a dark background. */
+  .panel,
+  .watchlist-panel,
+  .subscription-usage,
+  .stat-card,
+  .dashboard-state {
+    background: var(--surface);
+  }
+
+  /* Table headers use a hardcoded cream fill in the base theme. */
+  .data-table th,
+  .watchlist-panel .data-table th {
+    background: var(--surface-muted);
+  }
+
+  /* Inputs and pickers default to light fills via hardcoded values. */
+  input,
+  textarea,
+  select {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  /* Soften the white top-sheen overlays so panels read as dark. */
+  .panel::before,
+  .user-profile-card::before,
+  .stat-card::before,
+  .balance-card::before,
+  .trend-card::before,
+  .allocation-card::before,
+  .watchlist-panel::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
+  }
+
+  /* Warm cream header band -> flat dark. */
+  .watchlist-panel .panel-header,
+  .positions-table-panel .panel-header {
+    background: var(--surface-muted);
+    border-color: var(--border);
   }
 }

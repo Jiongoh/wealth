@@ -25,11 +25,14 @@ const SUBSCRIPTION_WARN_RATIO = 0.8;
 
 function SubscriptionUsageBanner({ plan, onManage }: { plan: MarketSubscriptionPlan; onManage: () => void }) {
   const max = Math.max(plan.max_symbols, 1);
-  const ratio = Math.min(plan.subscribed_count / max, 1);
   const overCap = plan.overflow_count > 0;
   const nearCap = !overCap && plan.subscribed_count >= max * SUBSCRIPTION_WARN_RATIO;
   const tone = overCap ? "is-over" : nearCap ? "is-near" : "is-ok";
   const manualCount = Math.max(plan.subscribed_count - plan.holdings_count, 0);
+  // Split the bar into an auto (holdings, green) segment and a manual (blue)
+  // segment; the grey track underneath shows the remaining free slots.
+  const autoPct = Math.min(plan.holdings_count / max, 1) * 100;
+  const manualPct = Math.min(manualCount / max, 1) * 100;
   return (
     <section className={`subscription-usage ${tone}`} aria-label="Realtime subscription usage">
       <div className="subscription-usage-main">
@@ -40,7 +43,8 @@ function SubscriptionUsageBanner({ plan, onManage }: { plan: MarketSubscriptionP
           </span>
         </div>
         <div className="subscription-usage-bar" role="presentation">
-          <span style={{ width: `${ratio * 100}%` }} />
+          <span className="subscription-usage-seg subscription-usage-seg-auto" style={{ width: `${autoPct}%` }} />
+          <span className="subscription-usage-seg subscription-usage-seg-manual" style={{ width: `${manualPct}%` }} />
         </div>
         <p className="subscription-usage-detail">
           {plan.holdings_count} holdings auto-subscribed · {manualCount} manually subscribed
@@ -843,6 +847,7 @@ export function WatchlistView() {
           <div className="watchlist-symbol-line">
             <Link className="watchlist-symbol-link" href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}>
               {row.symbol}
+              <span className="watchlist-symbol-arrow" aria-hidden="true">↗</span>
             </Link>
             <SubscriptionBadge source={subscriptionSource(row)} />
           </div>
@@ -1049,6 +1054,16 @@ export function WatchlistView() {
                 </button>
               </div>
             ) : null}
+            <div className="watchlist-table-footer">
+              <span>
+                Showing {pagedRows.length} of {rows.length} tickers · prices delayed 15 min unless subscribed
+              </span>
+              {subscriptionPlan ? (
+                <span>
+                  {subscriptionPlan.subscribed_count} / {subscriptionPlan.max_symbols} realtime slots used
+                </span>
+              ) : null}
+            </div>
           </>
         )}
       </section>
@@ -1352,7 +1367,17 @@ export function WatchlistView() {
                 <button className="text-action" disabled={isSaving} onClick={() => startManagedTickerEdit(activePopoverTicker)} type="button">
                   Edit
                 </button>
-                <button className="text-action text-action-danger" disabled={isSaving} onClick={() => deleteTicker(activePopoverTicker.symbol)} type="button">
+                <button
+                  className="text-action text-action-danger"
+                  disabled={isSaving || activePopoverTicker.has_position}
+                  onClick={() => deleteTicker(activePopoverTicker.symbol)}
+                  title={
+                    activePopoverTicker.has_position
+                      ? "Held positions sync from IBKR and can't be removed from the watchlist."
+                      : undefined
+                  }
+                  type="button"
+                >
                   Delete
                 </button>
               </div>
