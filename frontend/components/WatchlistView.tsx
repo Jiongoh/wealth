@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, type MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { BaseModal } from "@/components/BaseModal";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { EmptyState } from "@/components/EmptyState";
@@ -109,10 +108,6 @@ type EditForm = {
   notes: string;
 };
 
-type TagPopoverPosition = {
-  left: number;
-  top: number;
-};
 
 function decimalNumber(value: DecimalValue): number | null {
   if (value === null) {
@@ -181,10 +176,6 @@ export function WatchlistView() {
   const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
   const [form, setForm] = useState<TickerForm>(EMPTY_TICKER_FORM);
   const [tagForm, setTagForm] = useState("");
-  const [activeTickerPopoverSymbol, setActiveTickerPopoverSymbol] = useState<string | null>(null);
-  const [tickerPopoverPosition, setTickerPopoverPosition] = useState<TagPopoverPosition | null>(null);
-  const [activeTagPopoverId, setActiveTagPopoverId] = useState<number | null>(null);
-  const [tagPopoverPosition, setTagPopoverPosition] = useState<TagPopoverPosition | null>(null);
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [editingTagName, setEditingTagName] = useState("");
   const [editForm, setEditForm] = useState<EditForm>({ symbol: "", selectedTags: [], tagInput: "", notes: "" });
@@ -201,6 +192,7 @@ export function WatchlistView() {
   const [quotes, setQuotes] = useState<Record<string, MarketQuote>>({});
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
+  const [newTagOpen, setNewTagOpen] = useState(false);
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -311,80 +303,6 @@ export function WatchlistView() {
     };
   }, [form.symbol, manageTickersOpen]);
 
-  useEffect(() => {
-    if (!manageTickersOpen || activeTickerPopoverSymbol === null) {
-      return;
-    }
-
-    function closePopoverOnOutsideClick(event: MouseEvent) {
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('[data-ticker-popover-root="true"], [data-ticker-action-popover="true"]')) {
-        return;
-      }
-      setActiveTickerPopoverSymbol(null);
-      setTickerPopoverPosition(null);
-    }
-
-    document.addEventListener("mousedown", closePopoverOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closePopoverOnOutsideClick);
-  }, [activeTickerPopoverSymbol, manageTickersOpen]);
-
-  useEffect(() => {
-    if (!manageTickersOpen || activeTickerPopoverSymbol === null) {
-      return;
-    }
-
-    function closePopoverOnViewportChange() {
-      setActiveTickerPopoverSymbol(null);
-      setTickerPopoverPosition(null);
-    }
-
-    window.addEventListener("resize", closePopoverOnViewportChange);
-    window.addEventListener("scroll", closePopoverOnViewportChange, true);
-    return () => {
-      window.removeEventListener("resize", closePopoverOnViewportChange);
-      window.removeEventListener("scroll", closePopoverOnViewportChange, true);
-    };
-  }, [activeTickerPopoverSymbol, manageTickersOpen]);
-
-  useEffect(() => {
-    if (!manageTagsOpen || activeTagPopoverId === null) {
-      return;
-    }
-
-    function closePopoverOnOutsideClick(event: MouseEvent) {
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('[data-tag-popover-root="true"], [data-tag-action-popover="true"]')) {
-        return;
-      }
-      setActiveTagPopoverId(null);
-      setTagPopoverPosition(null);
-      setEditingTagId(null);
-    }
-
-    document.addEventListener("mousedown", closePopoverOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closePopoverOnOutsideClick);
-  }, [activeTagPopoverId, manageTagsOpen]);
-
-  useEffect(() => {
-    if (!manageTagsOpen || activeTagPopoverId === null) {
-      return;
-    }
-
-    function closePopoverOnViewportChange() {
-      setActiveTagPopoverId(null);
-      setTagPopoverPosition(null);
-      setEditingTagId(null);
-    }
-
-    window.addEventListener("resize", closePopoverOnViewportChange);
-    window.addEventListener("scroll", closePopoverOnViewportChange, true);
-    return () => {
-      window.removeEventListener("resize", closePopoverOnViewportChange);
-      window.removeEventListener("scroll", closePopoverOnViewportChange, true);
-    };
-  }, [activeTagPopoverId, manageTagsOpen]);
-
   async function addTicker(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const symbol = form.symbol.trim().toUpperCase();
@@ -462,8 +380,6 @@ export function WatchlistView() {
       await api.updateWatchlistTag(tagId, { name });
       setEditingTagId(null);
       setEditingTagName("");
-      setActiveTagPopoverId(null);
-      setTagPopoverPosition(null);
       setSelectedTags([]);
       setHoldingOnly(false);
       setPage(1);
@@ -486,8 +402,6 @@ export function WatchlistView() {
     setDialogError(null);
     try {
       await api.deleteWatchlistTag(tag.id);
-      setActiveTagPopoverId(null);
-      setTagPopoverPosition(null);
       setEditingTagId(null);
       setEditingTagName("");
       setSelectedTags([]);
@@ -576,10 +490,6 @@ export function WatchlistView() {
       await api.deleteWatchlistTicker(symbol);
       if (editingSymbol === symbol) {
         setEditingSymbol(null);
-      }
-      if (activeTickerPopoverSymbol === symbol) {
-        setActiveTickerPopoverSymbol(null);
-        setTickerPopoverPosition(null);
       }
       setPage(1);
       await loadWatchlist();
@@ -681,6 +591,7 @@ export function WatchlistView() {
 
   function resetTickerForm() {
     setForm(EMPTY_TICKER_FORM);
+    setNewTagOpen(false);
     setSymbolResults([]);
     setSymbolSearchOpen(false);
     setIsSymbolSearching(false);
@@ -689,16 +600,12 @@ export function WatchlistView() {
 
   function openManageTickers() {
     setDialogError(null);
-    setActiveTickerPopoverSymbol(null);
-    setTickerPopoverPosition(null);
     setManageTickersOpen(true);
   }
 
   function closeManageTickers() {
     setManageTickersOpen(false);
     setDialogError(null);
-    setActiveTickerPopoverSymbol(null);
-    setTickerPopoverPosition(null);
     resetTickerForm();
   }
 
@@ -706,49 +613,12 @@ export function WatchlistView() {
     setDialogError(null);
     setEditingTagId(null);
     setEditingTagName("");
-    setActiveTagPopoverId(null);
-    setTagPopoverPosition(null);
     setManageTagsOpen(true);
   }
 
-  function toggleTickerPopover(symbol: string, event: ReactMouseEvent<HTMLButtonElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const popoverWidth = 178;
-    const safeGutter = 12;
-    const maxLeft = window.scrollX + window.innerWidth - popoverWidth - safeGutter;
-    const minLeft = safeGutter + window.scrollX;
-    const nextLeft = Math.max(minLeft, Math.min(rect.left + window.scrollX, Math.max(minLeft, maxLeft)));
-
-    setDialogError(null);
-    setTickerPopoverPosition({
-      left: nextLeft,
-      top: rect.bottom + window.scrollY + 9,
-    });
-    setActiveTickerPopoverSymbol((current) => (current === symbol ? null : symbol));
-  }
-
   function startManagedTickerEdit(row: WatchlistItem) {
-    setActiveTickerPopoverSymbol(null);
-    setTickerPopoverPosition(null);
     setManageTickersOpen(false);
     startEdit(row);
-  }
-
-  function toggleTagPopover(tagId: number, event: ReactMouseEvent<HTMLButtonElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const popoverWidth = 232;
-    const safeGutter = 12;
-    const maxLeft = window.scrollX + window.innerWidth - popoverWidth - safeGutter;
-    const minLeft = safeGutter + window.scrollX;
-    const nextLeft = Math.max(minLeft, Math.min(rect.left + window.scrollX, Math.max(minLeft, maxLeft)));
-
-    setDialogError(null);
-    setEditingTagId(null);
-    setTagPopoverPosition({
-      left: nextLeft,
-      top: rect.bottom + window.scrollY + 9,
-    });
-    setActiveTagPopoverId((current) => (current === tagId ? null : tagId));
   }
 
   const rows: WatchlistRow[] = useMemo(() => {
@@ -776,8 +646,6 @@ export function WatchlistView() {
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pagedRows = rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const activePopoverTicker = items?.find((item) => item.symbol === activeTickerPopoverSymbol) ?? null;
-  const activePopoverTag = tags.find((tag) => tag.id === activeTagPopoverId) ?? null;
   const holdingCount = items?.filter((item) => item.has_position).length ?? 0;
   const allFiltersCleared = selectedTags.length === 0 && !holdingOnly;
 
@@ -1180,211 +1048,211 @@ export function WatchlistView() {
 
       <BaseModal
         className="manage-tickers-modal"
-        description="Add, edit, or delete tickers in your personal watchlist. Pick existing tags or create new ones."
+        description="Tags can be selected or typed. Symbol will be validated on add."
         isOpen={manageTickersOpen}
         onClose={closeManageTickers}
         title="Add ticker"
       >
-        <div className="tag-manager manage-tickers-manager">
-          <section className="tag-manager-section manage-tickers-fixed-section">
-            <h3>Add Ticker</h3>
-            <form className="modal-form" onSubmit={addTicker}>
-              <div className="filter-field">
-                <span>Symbol</span>
-                <div className="symbol-search-field">
-                  <input
-                    autoFocus
-                    aria-autocomplete="list"
-                    aria-expanded={symbolSearchOpen}
-                    onBlur={() => {
-                      window.setTimeout(() => setSymbolSearchOpen(false), 120);
-                    }}
-                    onChange={(event) => {
-                      setForm((current) => ({ ...current, symbol: event.target.value.toUpperCase() }));
-                      setSymbolSearchOpen(Boolean(event.target.value.trim()));
-                    }}
-                    onFocus={() => {
-                      if (form.symbol.trim()) {
-                        setSymbolSearchOpen(true);
-                      }
-                    }}
-                    placeholder="COHR"
-                    value={form.symbol}
-                  />
-                  {symbolSearchOpen ? (
-                    <div className="symbol-search-menu" role="listbox">
-                      <div className="symbol-search-scroll">
-                        {isSymbolSearching ? <div className="symbol-search-status">Searching symbols...</div> : null}
-                        {symbolSearchError ? <div className="symbol-search-status symbol-search-error">{symbolSearchError}</div> : null}
-                        {!isSymbolSearching && !symbolSearchError && symbolResults.length === 0 ? (
-                          <div className="symbol-search-status">No matching symbols</div>
-                        ) : null}
-                        {symbolResults.map((result) => (
-                          <button
-                            className="symbol-search-option"
-                            key={`${result.symbol}-${result.exchange ?? "unknown"}`}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              selectSymbolResult(result);
-                            }}
-                            role="option"
-                            type="button"
-                          >
-                            <span className="symbol-search-option-main">
-                              <strong>{result.symbol}</strong>
-                              {result.is_etf ? <span className="symbol-search-etf">ETF</span> : null}
-                            </span>
-                            <span className="symbol-search-option-name">{result.name ?? "Unnamed symbol"}</span>
-                            <span className="symbol-search-option-exchange">{result.exchange ?? "Unknown exchange"}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              <label className="filter-field">
-                <span>Company name</span>
+        <div className="ticker-manager">
+          <form className="ticker-add-form" onSubmit={addTicker}>
+            <div className="ticker-field">
+              <span className="ticker-field-label">Symbol</span>
+              <div className="symbol-search-field">
                 <input
-                  onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))}
-                  placeholder="Optional — auto-filled from symbol"
-                  value={form.displayName}
+                  autoFocus
+                  aria-autocomplete="list"
+                  aria-expanded={symbolSearchOpen}
+                  onBlur={() => {
+                    window.setTimeout(() => setSymbolSearchOpen(false), 120);
+                  }}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, symbol: event.target.value.toUpperCase() }));
+                    setSymbolSearchOpen(Boolean(event.target.value.trim()));
+                  }}
+                  onFocus={() => {
+                    if (form.symbol.trim()) {
+                      setSymbolSearchOpen(true);
+                    }
+                  }}
+                  placeholder="e.g. NVTS"
+                  value={form.symbol}
                 />
-              </label>
-              <div className="filter-field">
-                <span>Tags</span>
-                <div className="add-ticker-tags">
-                  {tags.length === 0 ? (
-                    <span className="tag-manager-help">No tags yet — create one below.</span>
-                  ) : (
-                    tags.map((tag) => {
-                      const checked = form.selectedTags.some(
-                        (selected) => selected.toLocaleLowerCase() === tag.name.toLocaleLowerCase(),
-                      );
-                      return (
+                {symbolSearchOpen ? (
+                  <div className="symbol-search-menu" role="listbox">
+                    <div className="symbol-search-scroll">
+                      {isSymbolSearching ? <div className="symbol-search-status">Searching symbols...</div> : null}
+                      {symbolSearchError ? <div className="symbol-search-status symbol-search-error">{symbolSearchError}</div> : null}
+                      {!isSymbolSearching && !symbolSearchError && symbolResults.length === 0 ? (
+                        <div className="symbol-search-status">No matching symbols</div>
+                      ) : null}
+                      {symbolResults.map((result) => (
                         <button
-                          aria-pressed={checked}
-                          className={`tag-checkbox${checked ? " is-checked" : ""}`}
-                          key={tag.id}
-                          onClick={() => toggleAddFormTag(tag.name)}
+                          className="symbol-search-option"
+                          key={`${result.symbol}-${result.exchange ?? "unknown"}`}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            selectSymbolResult(result);
+                          }}
+                          role="option"
                           type="button"
                         >
-                          <span className="tag-checkbox-dot" style={{ backgroundColor: tag.color ?? DEFAULT_TAG_COLOR }} />
-                          {checked ? <span className="tag-filter-check">✓</span> : null}
-                          {tag.name}
+                          <span className="symbol-search-option-main">
+                            <strong>{result.symbol}</strong>
+                            {result.is_etf ? <span className="symbol-search-etf">ETF</span> : null}
+                          </span>
+                          <span className="symbol-search-option-name">{result.name ?? "Unnamed symbol"}</span>
+                          <span className="symbol-search-option-exchange">{result.exchange ?? "Unknown exchange"}</span>
                         </button>
-                      );
-                    })
-                  )}
-                </div>
-                <div className="add-ticker-newtag">
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="ticker-field">
+              <span className="ticker-field-label">Select tags</span>
+              <div className="select-tags-row">
+                {tags.map((tag) => {
+                  const selected = form.selectedTags.some(
+                    (name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase(),
+                  );
+                  return (
+                    <button
+                      aria-pressed={selected}
+                      className={`select-tag-pill${selected ? " is-selected" : ""}`}
+                      key={tag.id}
+                      onClick={() => toggleAddFormTag(tag.name)}
+                      type="button"
+                    >
+                      {tag.name}
+                    </button>
+                  );
+                })}
+                {form.selectedTags
+                  .filter((name) => !tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
+                  .map((name) => (
+                    <button
+                      aria-pressed
+                      className="select-tag-pill is-selected"
+                      key={`new-${name}`}
+                      onClick={() => toggleAddFormTag(name)}
+                      type="button"
+                    >
+                      {name}
+                    </button>
+                  ))}
+                {newTagOpen ? (
                   <input
+                    autoFocus
+                    className="select-tag-input"
+                    onBlur={() => {
+                      if (form.newTag.trim()) {
+                        addNewFormTag();
+                      }
+                      setNewTagOpen(false);
+                    }}
                     onChange={(event) => setForm((current) => ({ ...current, newTag: event.target.value }))}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
                         addNewFormTag();
+                      } else if (event.key === "Escape") {
+                        setForm((current) => ({ ...current, newTag: "" }));
+                        setNewTagOpen(false);
                       }
                     }}
-                    placeholder="New tag"
+                    placeholder="Tag name"
                     value={form.newTag}
                   />
-                  <button className="secondary-button" disabled={!form.newTag.trim()} onClick={addNewFormTag} type="button">
-                    Add tag
-                  </button>
-                </div>
-                {form.selectedTags.length > 0 ? (
-                  <div className="add-ticker-selected">
-                    {form.selectedTags.map((tag) => (
-                      <span className="tag-pill soft-chip" key={tag} style={{ backgroundColor: tagColor(tag, tags) }}>
-                        {tag}
-                        <button aria-label={`Remove ${tag}`} onClick={() => toggleAddFormTag(tag)} type="button">
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <label className="filter-field">
-                <span>Notes</span>
-                <input
-                  onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                  placeholder="Optional note"
-                  value={form.notes}
-                />
-              </label>
-              <div className="modal-actions">
-                <button className="action-button" disabled={isSaving} type="submit">
-                  Add
-                </button>
-              </div>
-            </form>
-          </section>
-
-          <div className="manage-tickers-scroll-body">
-            <section className="tag-manager-section manage-tickers-list-section">
-              <h3>Existing Tickers</h3>
-              <p className="tag-manager-help">
-                Delete here removes only the watchlist ticker. It keeps all imported IBKR data.
-              </p>
-              <div className="tag-chip-grid ticker-chip-grid" onClick={() => setActiveTickerPopoverSymbol(null)}>
-                {items && items.length > 0 ? (
-                  items.map((item) => (
-                    <div
-                      className="tag-chip-wrap"
-                      data-ticker-popover-root="true"
-                      key={item.id}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <button className="tag-chip-button ticker-chip-button soft-chip" onClick={(event) => toggleTickerPopover(item.symbol, event)} type="button">
-                        {item.symbol}
-                        <span className={item.has_position ? "ticker-chip-status-holding" : undefined}>
-                          · {item.has_position ? "Holding" : "No Position"}
-                        </span>
-                      </button>
-                    </div>
-                  ))
                 ) : (
-                  <span className="tag-editor-empty">No tickers tracked yet.</span>
+                  <button
+                    className="select-tag-pill select-tag-pill-new"
+                    onClick={() => setNewTagOpen(true)}
+                    type="button"
+                  >
+                    + New tag…
+                  </button>
                 )}
               </div>
-            </section>
-          </div>
+            </div>
 
-          {dialogError ? <p className="form-error">{dialogError}</p> : null}
+            <label className="ticker-field">
+              <span className="ticker-field-label">Notes (optional)</span>
+              <input
+                onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="e.g. CPO supply chain watch"
+                value={form.notes}
+              />
+            </label>
+
+            {dialogError ? <p className="form-error">{dialogError}</p> : null}
+
+            <button className="action-button ticker-add-submit" disabled={isSaving} type="submit">
+              Add to watchlist
+            </button>
+          </form>
+
+          <section className="ticker-existing">
+            <p className="ticker-existing-label">Existing tickers</p>
+            {items && items.length > 0 ? (
+              <div className="ticker-existing-list">
+                {items.map((item) => (
+                  <div className="ticker-row" key={item.id}>
+                    <div className="ticker-row-main">
+                      <div className="ticker-row-head">
+                        <strong>{item.symbol}</strong>
+                        {item.has_position ? <span className="ticker-row-status"> · Holding</span> : null}
+                      </div>
+                      {item.tags.length > 0 ? (
+                        <div className="ticker-row-tags">
+                          {item.tags.map((tag) => (
+                            <span
+                              className="tag-pill soft-chip watchlist-table-tag"
+                              key={tag}
+                              style={{ backgroundColor: tagColor(tag, tags) }}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="ticker-row-actions">
+                      <button
+                        aria-label={`Edit ${item.symbol}`}
+                        className="icon-action"
+                        disabled={isSaving}
+                        onClick={() => startManagedTickerEdit(item)}
+                        title="Edit ticker"
+                        type="button"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        aria-label={`Delete ${item.symbol}`}
+                        className="icon-action"
+                        disabled={isSaving || item.has_position}
+                        onClick={() => deleteTicker(item.symbol)}
+                        title={
+                          item.has_position
+                            ? "Held positions sync from IBKR and can't be removed."
+                            : "Delete ticker (keeps imported IBKR data)"
+                        }
+                        type="button"
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="tag-editor-empty">No tickers tracked yet.</span>
+            )}
+          </section>
         </div>
       </BaseModal>
-
-      {manageTickersOpen && activePopoverTicker && tickerPopoverPosition
-        ? createPortal(
-            <div
-              className="tag-action-popover tag-action-popover-portal ticker-action-popover"
-              data-ticker-action-popover="true"
-              style={{ left: tickerPopoverPosition.left, top: tickerPopoverPosition.top }}
-            >
-              <div className="tag-manager-actions tag-popover-actions">
-                <button className="text-action" disabled={isSaving} onClick={() => startManagedTickerEdit(activePopoverTicker)} type="button">
-                  Edit
-                </button>
-                <button
-                  className="text-action text-action-danger"
-                  disabled={isSaving || activePopoverTicker.has_position}
-                  onClick={() => deleteTicker(activePopoverTicker.symbol)}
-                  title={
-                    activePopoverTicker.has_position
-                      ? "Held positions sync from IBKR and can't be removed from the watchlist."
-                      : undefined
-                  }
-                  type="button"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
 
       <BaseModal
         description="Add, rename, or delete tags globally. Global deletion removes the tag from all tickers."
@@ -1414,26 +1282,75 @@ export function WatchlistView() {
           </section>
 
           <section className="tag-manager-section">
-            <h3>Existing Tags</h3>
+            <h3>Existing tags</h3>
             <p className="tag-manager-help">Delete here is global. It removes the tag from all tickers, but keeps every ticker.</p>
-            <div className="tag-chip-grid" onClick={() => setActiveTagPopoverId(null)}>
-              {tags.length > 0 ? (
-                tags.map((tag) => (
-                  <div className="tag-chip-wrap" data-tag-popover-root="true" key={tag.id} onClick={(event) => event.stopPropagation()}>
-                    <button
-                      className="tag-chip-button soft-chip"
-                      onClick={(event) => toggleTagPopover(tag.id, event)}
-                      style={{ backgroundColor: tag.color ?? DEFAULT_TAG_COLOR }}
-                      type="button"
-                    >
-                      {tag.name} <span>· {tag.count}</span>
-                    </button>
+            {tags.length > 0 ? (
+              <div className="tag-existing-list">
+                {tags.map((tag) => (
+                  <div className="tag-row" key={tag.id}>
+                    {editingTagId === tag.id ? (
+                      <input
+                        autoFocus
+                        className="tag-row-input"
+                        onChange={(event) => setEditingTagName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            saveTagEdit(tag.id);
+                          } else if (event.key === "Escape") {
+                            setEditingTagId(null);
+                          }
+                        }}
+                        value={editingTagName}
+                      />
+                    ) : (
+                      <span className="tag-row-main">
+                        <span className="tag-row-dot" style={{ backgroundColor: tag.color ?? DEFAULT_TAG_COLOR }} />
+                        <span className="tag-row-name">{tag.name}</span>
+                        <span className="tag-row-count">· {tag.count}</span>
+                      </span>
+                    )}
+                    <div className="tag-row-actions">
+                      {editingTagId === tag.id ? (
+                        <>
+                          <button className="text-action" disabled={isSaving} onClick={() => saveTagEdit(tag.id)} type="button">
+                            Save
+                          </button>
+                          <button className="text-action" disabled={isSaving} onClick={() => setEditingTagId(null)} type="button">
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            aria-label={`Rename ${tag.name}`}
+                            className="icon-action"
+                            disabled={isSaving}
+                            onClick={() => startTagEdit(tag)}
+                            title="Rename tag"
+                            type="button"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            aria-label={`Delete ${tag.name}`}
+                            className="icon-action"
+                            disabled={isSaving}
+                            onClick={() => deleteGlobalTag(tag)}
+                            title="Delete tag globally"
+                            type="button"
+                          >
+                            🗑
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                ))
-              ) : (
-                <span className="tag-editor-empty">No tags created yet.</span>
-              )}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <span className="tag-editor-empty">No tags created yet.</span>
+            )}
           </section>
 
           {dialogError ? <p className="form-error">{dialogError}</p> : null}
@@ -1444,44 +1361,6 @@ export function WatchlistView() {
           </div>
         </div>
       </BaseModal>
-
-      {manageTagsOpen && activePopoverTag && tagPopoverPosition
-        ? createPortal(
-            <div
-              className="tag-action-popover tag-action-popover-portal"
-              data-tag-action-popover="true"
-              style={{ left: tagPopoverPosition.left, top: tagPopoverPosition.top }}
-            >
-              {editingTagId === activePopoverTag.id ? (
-                <div className="tag-popover-edit">
-                  <input
-                    className="tag-manager-input"
-                    onChange={(event) => setEditingTagName(event.target.value)}
-                    value={editingTagName}
-                  />
-                  <div className="tag-manager-actions">
-                    <button className="text-action" disabled={isSaving} onClick={() => saveTagEdit(activePopoverTag.id)} type="button">
-                      Save
-                    </button>
-                    <button className="text-action" disabled={isSaving} onClick={() => setEditingTagId(null)} type="button">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="tag-manager-actions tag-popover-actions">
-                  <button className="text-action" disabled={isSaving} onClick={() => startTagEdit(activePopoverTag)} type="button">
-                    Edit
-                  </button>
-                  <button className="text-action text-action-danger" disabled={isSaving} onClick={() => deleteGlobalTag(activePopoverTag)} type="button">
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>,
-            document.body,
-          )
-        : null}
 
       <BaseModal
         description="Update notes and tags for this ticker. Removing a tag only unlinks it here."

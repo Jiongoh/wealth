@@ -2363,61 +2363,204 @@ button.sub-chip:disabled {
 }
 
 /* Add-ticker tag checkboxes. */
-.add-ticker-tags {
+/* Add ticker modal */
+.ticker-manager {
+  display: grid;
+  gap: 22px;
+}
+
+.ticker-add-form {
+  display: grid;
+  gap: 16px;
+}
+
+.ticker-field {
+  display: grid;
+  gap: 7px;
+}
+
+.ticker-field-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ticker-field input {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 11px 13px;
+  width: 100%;
+}
+
+.select-tags-row {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.tag-checkbox {
-  align-items: center;
+.select-tag-pill {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   color: var(--text);
   cursor: pointer;
-  display: inline-flex;
   font-size: 13px;
-  font-weight: 650;
-  gap: 6px;
-  padding: 5px 11px;
+  font-weight: 600;
+  padding: 6px 13px;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 
-.tag-checkbox.is-checked {
+.select-tag-pill:hover {
   border-color: var(--accent-deep);
 }
 
-.tag-checkbox-dot {
-  border-radius: 50%;
-  height: 9px;
-  width: 9px;
+.select-tag-pill.is-selected {
+  background: rgba(201, 136, 13, 0.16);
+  border-color: var(--accent-deep);
+  color: #8a5d09;
 }
 
-.add-ticker-newtag {
+.select-tag-pill-new {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.select-tag-input {
+  background: var(--surface);
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 13px;
+  width: 130px;
+}
+
+.ticker-add-submit {
+  margin-top: 2px;
+  width: 100%;
+}
+
+/* Existing tickers list */
+.ticker-existing {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+}
+
+.ticker-existing-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ticker-existing-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ticker-row {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.ticker-row-head {
+  align-items: baseline;
+  display: flex;
+  gap: 2px;
+}
+
+.ticker-row-head strong {
+  font-size: 14px;
+  font-weight: 740;
+}
+
+.ticker-row-status {
+  color: var(--sub-auto);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ticker-row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.ticker-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+/* Existing tags list (Manage Tags) */
+.tag-existing-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tag-row {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.tag-row-main {
   align-items: center;
   display: flex;
   gap: 8px;
-  margin-top: 10px;
 }
 
-.add-ticker-newtag input {
+.tag-row-dot {
+  border-radius: 50%;
+  height: 10px;
+  width: 10px;
+}
+
+.tag-row-name {
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.tag-row-count {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tag-row-input {
+  background: var(--surface);
+  border: 1px solid var(--accent-deep);
+  border-radius: 12px;
+  color: var(--text);
   flex: 1;
+  font-size: 14px;
+  padding: 7px 11px;
 }
 
-.add-ticker-selected {
+.tag-row-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.add-ticker-selected .tag-pill button {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-  margin-left: 4px;
-  padding: 0;
+  flex-shrink: 0;
+  gap: 6px;
 }
 
 .watchlist-panel {
@@ -4508,78 +4651,5 @@ button.sub-chip:disabled {
 
   .tag-editor-add-row {
     grid-template-columns: 1fr;
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Dark mode. Placed last so its token + surface overrides win the     */
-/* cascade. Colors are token-driven; cards that use light gradients in */
-/* the base theme are flattened to the dark surface here.              */
-/* ------------------------------------------------------------------ */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --page-background: #131419;
-    --surface: #1c1e26;
-    --surface-muted: #232530;
-    --surface-hover: #2a2d39;
-    --warm-card: #2a2d39;
-    --warm-card-soft: #232530;
-    --text: #ececf1;
-    --text-muted: #a39d92;
-    --accent: #f5c84c;
-    --accent-deep: #e3ad3a;
-    --positive: #5fce8e;
-    --negative: #ff8a78;
-    --border: rgba(255, 255, 255, 0.10);
-    --border-strong: rgba(255, 255, 255, 0.17);
-    --sub-auto: #5fce8e;
-    --sub-auto-soft: rgba(95, 206, 142, 0.16);
-    --sub-manual: #8aa0ff;
-    --sub-manual-soft: rgba(138, 160, 255, 0.16);
-    --sub-none: #9a948a;
-    --sub-none-soft: rgba(255, 255, 255, 0.08);
-    --shadow-soft: 0 14px 38px rgba(0, 0, 0, 0.45);
-    --shadow-card: 0 8px 22px rgba(0, 0, 0, 0.4);
-  }
-
-  /* Flatten light gradients that would wash out on a dark background. */
-  .panel,
-  .watchlist-panel,
-  .subscription-usage,
-  .stat-card,
-  .dashboard-state {
-    background: var(--surface);
-  }
-
-  /* Table headers use a hardcoded cream fill in the base theme. */
-  .data-table th,
-  .watchlist-panel .data-table th {
-    background: var(--surface-muted);
-  }
-
-  /* Inputs and pickers default to light fills via hardcoded values. */
-  input,
-  textarea,
-  select {
-    background: var(--surface-muted);
-    color: var(--text);
-  }
-
-  /* Soften the white top-sheen overlays so panels read as dark. */
-  .panel::before,
-  .user-profile-card::before,
-  .stat-card::before,
-  .balance-card::before,
-  .trend-card::before,
-  .allocation-card::before,
-  .watchlist-panel::before {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
-  }
-
-  /* Warm cream header band -> flat dark. */
-  .watchlist-panel .panel-header,
-  .positions-table-panel .panel-header {
-    background: var(--surface-muted);
-    border-color: var(--border);
   }
 }
