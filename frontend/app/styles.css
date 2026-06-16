@@ -2001,32 +2001,46 @@ h1 {
   gap: 10px;
 }
 
+/* Gradient border via dual background-clip technique (works with border-radius). */
 .subscription-usage {
-  background: linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92));
-  border: 1px solid var(--border);
+  background:
+    linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92)) padding-box,
+    linear-gradient(135deg, #c8972a 0%, #f0d060 40%, #e8b830 70%, #b87c1a 100%) border-box;
+  border: 2px solid transparent;
   border-radius: var(--radius-lg);
   margin-bottom: 20px;
   padding: 16px 20px;
+}
+
+/* Banner becomes a row: icon · usage block grows · Manage button. */
+.subscription-usage {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.subscription-usage-icon {
+  color: #b8870e;
+  flex-shrink: 0;
+  line-height: 0;
+  opacity: 0.85;
+}
+
+.subscription-usage-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .subscription-usage-head {
   align-items: baseline;
   display: flex;
   gap: 12px;
-  justify-content: space-between;
 }
 
 .subscription-usage-title {
   color: var(--text);
   font-size: 14px;
   font-weight: 720;
-}
-
-.subscription-usage-count {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 760;
-  font-variant-numeric: tabular-nums;
 }
 
 .subscription-usage-bar {
@@ -2063,33 +2077,22 @@ h1 {
   line-height: 1.45;
 }
 
-.subscription-usage.is-near {
-  border-color: rgba(201, 145, 31, 0.5);
+.subscription-usage-manage {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
 }
 
 .subscription-usage.is-over {
-  border-color: rgba(180, 82, 26, 0.55);
+  background:
+    linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92)) padding-box,
+    linear-gradient(135deg, #c04a10 0%, #e87a40 50%, #c04a10 100%) border-box;
 }
 
 .subscription-usage.is-over .subscription-usage-detail {
   color: #a4520f;
   font-weight: 600;
-}
-
-/* Banner becomes a row: usage block grows, Manage button sits at the right. */
-.subscription-usage {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-}
-
-.subscription-usage-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.subscription-usage-manage {
-  flex-shrink: 0;
 }
 
 /* Subscription badges next to the symbol. */
