@@ -28,25 +28,26 @@ function SubscriptionUsageBanner({ plan, onManage }: { plan: MarketSubscriptionP
   const nearCap = !overCap && plan.subscribed_count >= max * SUBSCRIPTION_WARN_RATIO;
   const tone = overCap ? "is-over" : nearCap ? "is-near" : "is-ok";
   const manualCount = Math.max(plan.subscribed_count - plan.holdings_count, 0);
-  // Split the bar into an auto (holdings, green) segment and a manual (blue)
-  // segment; the grey track underneath shows the remaining free slots.
-  const autoPct = Math.min(plan.holdings_count / max, 1) * 100;
-  const manualPct = Math.min(manualCount / max, 1) * 100;
+  // Two coloured segments inside a pill-shaped clip container; grey track shows behind.
+  const totalPct = Math.min((plan.holdings_count + manualCount) / max, 1) * 100;
+  const autoPctOfFilled = totalPct > 0 ? Math.min(plan.holdings_count / max, 1) * 100 / totalPct * 100 : 0;
+  const manualPctOfFilled = totalPct > 0 ? 100 - autoPctOfFilled : 0;
   return (
     <section className={`subscription-usage ${tone}`} aria-label="Realtime subscription usage">
       <div className="subscription-usage-main">
         <div className="subscription-usage-head">
-          <span className="subscription-usage-title">Market data subscriptions</span>
-          <span className="subscription-usage-count">
-            {plan.subscribed_count} / {plan.max_symbols} symbols used
+          <span className="subscription-usage-title">
+            Realtime market data · {plan.subscribed_count} / {plan.max_symbols} symbols used
           </span>
         </div>
         <div className="subscription-usage-bar" role="presentation">
-          <span className="subscription-usage-seg subscription-usage-seg-auto" style={{ width: `${autoPct}%` }} />
-          <span className="subscription-usage-seg subscription-usage-seg-manual" style={{ width: `${manualPct}%` }} />
+          <div className="subscription-usage-filled" style={{ width: `${totalPct}%` }}>
+            <span className="subscription-usage-seg subscription-usage-seg-auto" style={{ width: `${autoPctOfFilled}%` }} />
+            <span className="subscription-usage-seg subscription-usage-seg-manual" style={{ width: `${manualPctOfFilled}%` }} />
+          </div>
         </div>
         <p className="subscription-usage-detail">
-          {plan.holdings_count} holdings auto-subscribed · {manualCount} manually subscribed
+          {plan.holdings_count} auto-subscribed from holdings · {manualCount} manually added from watchlist
           {overCap
             ? ` · ${plan.overflow_count} over limit: ${plan.excluded_symbols.join(", ")}`
             : nearCap

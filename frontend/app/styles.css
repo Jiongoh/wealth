@@ -2032,15 +2032,21 @@ h1 {
 .subscription-usage-bar {
   background: var(--sub-none-soft);
   border-radius: var(--radius-pill);
-  display: flex;
   height: 8px;
   margin: 10px 0 8px;
+}
+
+.subscription-usage-filled {
+  border-radius: var(--radius-pill);
+  display: flex;
+  height: 100%;
+  min-width: 0;
   overflow: hidden;
+  transition: width 0.3s ease;
 }
 
 .subscription-usage-seg {
   height: 100%;
-  transition: width 0.3s ease;
 }
 
 .subscription-usage-seg-auto {
