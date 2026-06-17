@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BaseModal } from "@/components/BaseModal";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { EmptyState } from "@/components/EmptyState";
@@ -96,6 +96,8 @@ const MAX_TAGS_PER_REQUEST = 5;
 const MAX_SELECTED_FILTER_TAGS = 5;
 const TAG_FILTER_COLLAPSED_COUNT = 6;
 const PAGE_SIZE = 10;
+// Existing-tickers list lazy-loads in batches as the modal scrolls (no nested scrollbar).
+const TICKER_PAGE_INCREMENT = 12;
 const DEFAULT_TAG_COLOR = "#F7DFA6";
 const EMPTY_TICKER_FORM: TickerForm = { symbol: "", displayName: "", selectedTags: [], newTag: "", notes: "" };
 
@@ -185,6 +187,8 @@ export function WatchlistView() {
   const [page, setPage] = useState(1);
   const [manageOpen, setManageOpen] = useState(false);
   const [manageTab, setManageTab] = useState<"tickers" | "tags">("tickers");
+  const [tickerRenderLimit, setTickerRenderLimit] = useState(TICKER_PAGE_INCREMENT);
+  const tickerSentinelRef = useRef<HTMLDivElement | null>(null);
   const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
   const [form, setForm] = useState<TickerForm>(EMPTY_TICKER_FORM);
   const [tagForm, setTagForm] = useState("");
@@ -265,6 +269,34 @@ export function WatchlistView() {
     const timeoutId = window.setTimeout(() => setFilterNotice(null), 2400);
     return () => window.clearTimeout(timeoutId);
   }, [filterNotice]);
+
+  // Reset the lazy-load window whenever the modal opens or the Tickers tab is shown.
+  useEffect(() => {
+    if (manageOpen && manageTab === "tickers") {
+      setTickerRenderLimit(TICKER_PAGE_INCREMENT);
+    }
+  }, [manageOpen, manageTab]);
+
+  // Grow the rendered window as the sentinel scrolls into view (infinite scroll).
+  useEffect(() => {
+    if (!manageOpen || manageTab !== "tickers") {
+      return;
+    }
+    const sentinel = tickerSentinelRef.current;
+    if (!sentinel) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setTickerRenderLimit((current) => current + TICKER_PAGE_INCREMENT);
+        }
+      },
+      { rootMargin: "120px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [manageOpen, manageTab, tickerRenderLimit, items]);
 
   useEffect(() => {
     if (!manageOpen || manageTab !== "tickers") {
@@ -1040,7 +1072,7 @@ export function WatchlistView() {
         </div>
 
         {manageTab === "tickers" ? (
-        <div className="ticker-manager scroll-area">
+        <div className="ticker-manager">
           <form className="ticker-add-form" onSubmit={addTicker}>
             <div className="ticker-field">
               <span className="ticker-field-label">Symbol</span>
@@ -1186,8 +1218,8 @@ export function WatchlistView() {
               Delete removes only the watchlist entry. Imported IBKR data is kept. Held positions are locked.
             </p>
             {items && items.length > 0 ? (
-              <div className="ticker-existing-list scroll-area">
-                {items.map((item) => (
+              <div className="ticker-existing-list">
+                {items.slice(0, tickerRenderLimit).map((item) => (
                   <div className="ticker-row" key={item.id}>
                     <div className="ticker-row-main">
                       <div className="ticker-row-head">
@@ -1248,6 +1280,9 @@ export function WatchlistView() {
                     </div>
                   </div>
                 ))}
+                {tickerRenderLimit < items.length ? (
+                  <div className="ticker-existing-sentinel" ref={tickerSentinelRef} aria-hidden="true" />
+                ) : null}
               </div>
             ) : (
               <span className="tag-editor-empty">No tickers tracked yet.</span>
@@ -1257,7 +1292,7 @@ export function WatchlistView() {
         ) : null}
 
         {manageTab === "tags" ? (
-        <div className="tag-manager scroll-area">
+        <div className="tag-manager">
           <section className="tag-manager-section">
             <span className="ticker-field-label">Add tags</span>
             <form className="tag-add-row" onSubmit={addTags}>
@@ -1292,13 +1327,13 @@ export function WatchlistView() {
               Deleting a tag is global: it&apos;s removed from every ticker, but the tickers stay.
             </p>
             {tags.length > 0 ? (
-              <div className="tag-existing-list scroll-area">
-                {tags.map((tag) => (
-                  <div className="tag-row" key={tag.id}>
-                    {editingTagId === tag.id ? (
+              <div className="tag-pill-list">
+                {tags.map((tag) =>
+                  editingTagId === tag.id ? (
+                    <span className="tag-manage-pill is-editing" key={tag.id}>
                       <input
                         autoFocus
-                        className="tag-row-input"
+                        className="tag-manage-pill-input"
                         onChange={(event) => setEditingTagName(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
@@ -1310,50 +1345,58 @@ export function WatchlistView() {
                         }}
                         value={editingTagName}
                       />
-                    ) : (
-                      <span className="tag-row-main">
-                        <span className="tag-row-dot" style={{ backgroundColor: tag.color ?? DEFAULT_TAG_COLOR }} />
-                        <span className="tag-row-name">{tag.name}</span>
-                        <span className="tag-row-count">· {tag.count} {tag.count === 1 ? "ticker" : "tickers"}</span>
-                      </span>
-                    )}
-                    <div className="tag-row-actions">
-                      {editingTagId === tag.id ? (
-                        <>
-                          <button className="text-action" disabled={isSaving} onClick={() => saveTagEdit(tag.id)} type="button">
-                            Save
-                          </button>
-                          <button className="text-action" disabled={isSaving} onClick={() => setEditingTagId(null)} type="button">
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            aria-label={`Rename ${tag.name}`}
-                            className="icon-action"
-                            disabled={isSaving}
-                            onClick={() => startTagEdit(tag)}
-                            title="Rename tag"
-                            type="button"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            aria-label={`Delete ${tag.name}`}
-                            className="icon-action"
-                            disabled={isSaving}
-                            onClick={() => deleteGlobalTag(tag)}
-                            title="Delete tag globally"
-                            type="button"
-                          >
-                            🗑
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                      <button
+                        aria-label="Save tag name"
+                        className="tag-manage-pill-act"
+                        disabled={isSaving}
+                        onClick={() => saveTagEdit(tag.id)}
+                        title="Save"
+                        type="button"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        aria-label="Cancel rename"
+                        className="tag-manage-pill-act"
+                        disabled={isSaving}
+                        onClick={() => setEditingTagId(null)}
+                        title="Cancel"
+                        type="button"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ) : (
+                    <span
+                      className="tag-pill soft-chip watchlist-table-tag tag-manage-pill"
+                      key={tag.id}
+                      style={{ backgroundColor: tagColor(tag.name, tags) }}
+                    >
+                      <span className="tag-manage-pill-name">{tag.name}</span>
+                      <span className="tag-manage-pill-count">{tag.count}</span>
+                      <button
+                        aria-label={`Rename ${tag.name}`}
+                        className="tag-manage-pill-act"
+                        disabled={isSaving}
+                        onClick={() => startTagEdit(tag)}
+                        title="Rename tag"
+                        type="button"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        aria-label={`Delete ${tag.name}`}
+                        className="tag-manage-pill-act tag-manage-pill-act-danger"
+                        disabled={isSaving}
+                        onClick={() => deleteGlobalTag(tag)}
+                        title="Delete tag globally"
+                        type="button"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ),
+                )}
               </div>
             ) : (
               <span className="tag-editor-empty">No custom tags yet.</span>

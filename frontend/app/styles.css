@@ -2425,9 +2425,10 @@ button.sub-chip:disabled {
 .ticker-existing-list {
   display: grid;
   gap: 8px;
-  max-height: 340px;
-  overflow-y: auto;
-  padding-right: 4px;
+}
+
+.ticker-existing-sentinel {
+  height: 1px;
 }
 
 .ticker-row {
@@ -2501,9 +2502,89 @@ button.sub-chip:disabled {
 .tag-existing-list {
   display: grid;
   gap: 8px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding-right: 4px;
+}
+
+/* Custom tags rendered as compact colour pills (matches the tracked-table tags). */
+.tag-pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-manage-pill {
+  align-items: center;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  padding: 5px 8px 5px 11px;
+}
+
+.tag-manage-pill-name {
+  white-space: nowrap;
+}
+
+.tag-manage-pill-count {
+  background: rgba(34, 35, 42, 0.1);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 720;
+  min-width: 18px;
+  padding: 0 6px;
+  text-align: center;
+}
+
+.tag-manage-pill-act {
+  align-items: center;
+  background: rgba(34, 35, 42, 0.08);
+  border: none;
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  width: 18px;
+}
+
+.tag-manage-pill-act:hover:not(:disabled) {
+  background: rgba(34, 35, 42, 0.16);
+}
+
+.tag-manage-pill-act-danger {
+  background: rgba(255, 122, 102, 0.2);
+  color: #b54538;
+}
+
+.tag-manage-pill-act-danger:hover:not(:disabled) {
+  background: rgba(255, 122, 102, 0.34);
+}
+
+.tag-manage-pill-act:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tag-manage-pill.is-editing {
+  background: var(--surface);
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--radius-pill);
+  box-shadow: none;
+  padding: 3px 5px 3px 9px;
+}
+
+.tag-manage-pill-input {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  outline: none;
+  width: 96px;
 }
 
 .tag-row {
