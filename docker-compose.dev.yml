@@ -1,6 +1,6 @@
 # Mac/local development compose file.
 # It intentionally does not start PostgreSQL. Keep the SSH tunnel running first:
-# ssh -L 5433:127.0.0.1:5432 root@YOUR_SERVER_IP
+# ssh -L 5433:127.0.0.1:5432 root@<your-vps-ip>
 #
 # For Docker Desktop on Mac, containers may need host.docker.internal instead of
 # 127.0.0.1 to reach a tunnel bound on the Mac host. The native venv/npm flow in

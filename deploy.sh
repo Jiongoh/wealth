@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-SERVER="root@YOUR_SERVER_IP"   # 或用 IP
+SERVER="root@<YOUR_SERVER_IP>"  # 在本地覆盖: export DEPLOY_SERVER=root@x.x.x.x
+SERVER="${DEPLOY_SERVER:-$SERVER}"
 REMOTE_PATH="~/wealth"
 
 echo "Git Push"

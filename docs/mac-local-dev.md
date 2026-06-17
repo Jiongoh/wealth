@@ -9,7 +9,7 @@ This guide sets up a Mac mini as the main development and build machine while Po
 - Connect from the Mac through an SSH tunnel:
 
 ```bash
-ssh -L 5433:127.0.0.1:5432 root@YOUR_SERVER_IP
+ssh -L 5433:127.0.0.1:5432 root@<your-vps-ip>
 ```
 
 - Use GitHub as the code synchronization point.
@@ -53,7 +53,7 @@ YAHOO_FALLBACK_WRITE_CANDLES=false
 Run this in a dedicated terminal and keep it open:
 
 ```bash
-ssh -L 5433:127.0.0.1:5432 root@YOUR_SERVER_IP
+ssh -L 5433:127.0.0.1:5432 root@<your-vps-ip>
 ```
 
 This maps:
