@@ -3334,6 +3334,9 @@ button.sub-chip:disabled {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Radius must stay smaller than the body's edge inset (~24px) so the
+     scrollbar, which sits at that inset, never crosses the corner curve. */
+  border-radius: 18px;
 }
 
 .manage-watchlist-modal .modal-header,
@@ -3345,9 +3348,6 @@ button.sub-chip:disabled {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  /* keep the thumb a hair off the content edge, still well inside the border */
-  margin-right: -6px;
-  padding-right: 6px;
 }
 
 /* Manage watchlist: segmented tab switcher. */
