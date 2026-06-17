@@ -3361,17 +3361,18 @@ button.sub-chip:disabled {
 }
 
 .manage-watchlist-body::-webkit-scrollbar {
-  width: 8px;
+  width: 10px; /* extra width so the 3px transparent border can float the thumb in */
 }
 
 .manage-watchlist-body::-webkit-scrollbar-track {
   background: transparent;
+  margin: 8px 0; /* ★ shortens the track so the thumb stops 8px short of each corner */
 }
 
 .manage-watchlist-body::-webkit-scrollbar-thumb {
   background: #d4a840;
   background-clip: padding-box;
-  border: 2px solid transparent; /* floats the thumb inward */
+  border: 3px solid transparent; /* + clip below: thin floating thumb, inset from the edge */
   border-radius: 999px;
 }
 
