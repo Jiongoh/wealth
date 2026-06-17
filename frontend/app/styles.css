@@ -2227,104 +2227,10 @@ h1 {
   padding-bottom: 22px;
 }
 
-.subscription-pool-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 26px;
-}
-
-.sub-chip {
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  display: inline-flex;
-  font-size: 13px;
-  font-weight: 700;
-  gap: 6px;
-  padding: 5px 11px;
-}
-
-.sub-chip-icon {
-  font-size: 11px;
-  opacity: 0.8;
-}
-
-button.sub-chip {
-  cursor: pointer;
-}
-
-button.sub-chip:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.sub-chip-auto {
-  background: var(--sub-auto-soft);
-  border-color: var(--sub-auto-soft);
-  color: var(--sub-auto);
-}
-
-.sub-chip-manual {
-  background: var(--sub-manual-soft);
-  border-color: var(--sub-manual-soft);
-  color: var(--sub-manual);
-}
-
-.sub-chip-manual:hover:not(:disabled) {
-  border-color: var(--sub-manual);
-}
-
-.sub-chip-none {
-  background: var(--sub-none-soft);
-  border-color: var(--sub-none-soft);
-  color: var(--sub-none);
-}
-
-.sub-chip-none:hover:not(:disabled) {
-  border-color: var(--sub-none);
-}
-
-.subscription-pool-legend {
-  color: var(--text-muted);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: 12px;
-  gap: 16px;
-  margin-top: 14px;
-  padding: 0 26px;
-}
-
-.subscription-pool-legend span {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-}
-
-.legend-dot {
-  border-radius: 50%;
-  height: 9px;
-  width: 9px;
-}
-
-.legend-dot-auto {
-  background: var(--sub-auto);
-}
-
-.legend-dot-manual {
-  background: var(--sub-manual);
-}
-
-.legend-dot-none {
-  background: var(--sub-none);
-}
-
-/* Manage subscription modal. */
 .subscription-manage-list {
   display: grid;
   gap: 8px;
-  max-height: 60vh;
-  overflow-y: auto;
+  padding: 0 4px;
 }
 
 .subscription-manage-row {

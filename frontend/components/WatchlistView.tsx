@@ -22,7 +22,7 @@ type SubscriptionSource = "auto" | "manual" | "none";
 // Warn once realtime subscriptions reach this share of the Alpaca free-tier cap.
 const SUBSCRIPTION_WARN_RATIO = 0.8;
 
-function SubscriptionUsageBanner({ plan, onManage }: { plan: MarketSubscriptionPlan; onManage: () => void }) {
+function SubscriptionUsageBanner({ plan }: { plan: MarketSubscriptionPlan }) {
   const max = Math.max(plan.max_symbols, 1);
   const overCap = plan.overflow_count > 0;
   const nearCap = !overCap && plan.subscribed_count >= max * SUBSCRIPTION_WARN_RATIO;
@@ -62,13 +62,6 @@ function SubscriptionUsageBanner({ plan, onManage }: { plan: MarketSubscriptionP
               : ""}
         </p>
       </div>
-      <button className="secondary-button subscription-usage-manage" onClick={onManage} type="button">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        Manage subscription
-      </button>
     </section>
   );
 }
@@ -202,7 +195,6 @@ export function WatchlistView() {
   const [symbolSearchError, setSymbolSearchError] = useState<string | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<MarketSubscriptionPlan | null>(null);
   const [quotes, setQuotes] = useState<Record<string, MarketQuote>>({});
-  const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
 
@@ -698,25 +690,6 @@ export function WatchlistView() {
       ),
     [items],
   );
-  // Green: actually-streaming symbols that aren't manual = holdings (locked).
-  const poolAuto = useMemo(
-    () => Array.from(subscribedSet).filter((symbol) => !manualSymbolSet.has(symbol)).sort(),
-    [subscribedSet, manualSymbolSet],
-  );
-  const poolManual = useMemo(
-    () =>
-      (items ?? [])
-        .filter((item) => item.realtime_enabled && !item.has_position)
-        .sort((a, b) => a.symbol.localeCompare(b.symbol)),
-    [items],
-  );
-  const poolNone = useMemo(
-    () =>
-      (items ?? [])
-        .filter((item) => !item.has_position && !item.realtime_enabled)
-        .sort((a, b) => a.symbol.localeCompare(b.symbol)),
-    [items],
-  );
 
   const columns: DataTableColumn<WatchlistRow>[] = [
     {
@@ -823,7 +796,7 @@ export function WatchlistView() {
       </div>
 
       {subscriptionPlan ? (
-        <SubscriptionUsageBanner plan={subscriptionPlan} onManage={() => setManageSubscriptionOpen(true)} />
+        <SubscriptionUsageBanner plan={subscriptionPlan} />
       ) : null}
 
       <section className="panel watchlist-panel">
@@ -948,82 +921,16 @@ export function WatchlistView() {
         )}
       </section>
 
-      {subscriptionPlan ? (
-        <section className="panel subscription-pool-card">
-          <div className="panel-header">
-            <div>
-              <h2>Subscription pool</h2>
-              <p>
-                Symbols receiving market data. Holdings subscribe automatically; add manual symbols up to the{" "}
-                {subscriptionPlan.max_symbols}-symbol limit.
-              </p>
-            </div>
-            <button className="secondary-button" onClick={openManageTickers} type="button">
-              Add symbol
-            </button>
+      <section className="panel subscription-pool-card">
+        <div className="panel-header">
+          <div>
+            <h2>Subscription pool</h2>
+            <p>Holdings subscribe automatically. Toggle manual subscriptions up to the {subscriptionPlan?.max_symbols ?? 30}-symbol limit.</p>
           </div>
-          <div className="subscription-pool-chips">
-            {poolAuto.length === 0 && poolManual.length === 0 && poolNone.length === 0 ? (
-              <span className="watchlist-muted">No symbols yet.</span>
-            ) : null}
-            {poolAuto.map((symbol) => (
-              <span className="sub-chip sub-chip-auto" key={`auto-${symbol}`} title="Holding · auto-subscribed (locked)">
-                {symbol}
-                <span className="sub-chip-icon" aria-hidden="true">🔒</span>
-              </span>
-            ))}
-            {poolManual.map((item) => (
-              <button
-                className="sub-chip sub-chip-manual"
-                disabled={isSaving}
-                key={`manual-${item.symbol}`}
-                onClick={() => toggleSubscription(item)}
-                title="Manually subscribed · click to unsubscribe"
-                type="button"
-              >
-                {item.symbol}
-                <span className="sub-chip-icon" aria-hidden="true">×</span>
-              </button>
-            ))}
-            {poolNone.map((item) => (
-              <button
-                className="sub-chip sub-chip-none"
-                disabled={isSaving || capReached}
-                key={`none-${item.symbol}`}
-                onClick={() => toggleSubscription(item)}
-                title={capReached ? "Subscription limit reached" : "Delayed only · click to subscribe"}
-                type="button"
-              >
-                {item.symbol}
-                <span className="sub-chip-icon" aria-hidden="true">+</span>
-              </button>
-            ))}
-          </div>
-          <div className="subscription-pool-legend">
-            <span>
-              <span className="legend-dot legend-dot-auto" /> Holding (auto, locked)
-            </span>
-            <span>
-              <span className="legend-dot legend-dot-manual" /> Manual subscription
-            </span>
-            <span>
-              <span className="legend-dot legend-dot-none" /> Delayed only
-            </span>
-          </div>
-        </section>
-      ) : null}
-
-      <BaseModal
-        className="manage-subscription-modal"
-        description={
-          subscriptionPlan
-            ? `${subscriptionPlan.subscribed_count} / ${subscriptionPlan.max_symbols} symbols used. Holdings subscribe automatically and are locked.`
-            : "Holdings subscribe automatically and are locked."
-        }
-        isOpen={manageSubscriptionOpen}
-        onClose={() => setManageSubscriptionOpen(false)}
-        title="Manage subscription"
-      >
+          <button className="secondary-button" onClick={openManageTickers} type="button">
+            Add symbol
+          </button>
+        </div>
         <div className="subscription-manage-list">
           {(items ?? []).length === 0 ? <EmptyState message="No watchlist tickers yet." /> : null}
           {(items ?? []).map((item) => {
@@ -1056,7 +963,7 @@ export function WatchlistView() {
             );
           })}
         </div>
-      </BaseModal>
+      </section>
 
       <BaseModal
         className="manage-tickers-modal"
