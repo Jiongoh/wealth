@@ -3328,26 +3328,56 @@ button.sub-chip:disabled {
   margin: 0 25px 16px;
 }
 
-/* Manage watchlist: fixed header + tabs, inner scroll body so the
-   scrollbar stays inside the rounded modal border. */
+/* Manage watchlist: three-layer modal.
+   Shell clips everything to its rounded corners (overflow:hidden) and never
+   scrolls; header + tabs are fixed; only .manage-watchlist-body scrolls. */
 .manage-watchlist-modal {
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* Radius must stay smaller than the body's edge inset (~24px) so the
-     scrollbar, which sits at that inset, never crosses the corner curve. */
-  border-radius: 18px;
+  overflow: hidden; /* ★ rounded shell clips child content incl. the scrollbar */
+  padding: 0; /* move padding onto the fixed header + scroll body */
 }
 
-.manage-watchlist-modal .modal-header,
+.manage-watchlist-modal .modal-header {
+  flex-shrink: 0;
+  margin-bottom: 16px;
+  padding: 24px 24px 0;
+}
+
 .manage-watchlist-modal .manage-tabs {
-  flex: 0 0 auto;
+  flex-shrink: 0;
+  margin: 0 24px 4px;
 }
 
 .manage-watchlist-body {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 0; /* ★ let the flex child shrink so overflow actually kicks in */
   overflow-y: auto;
+  padding: 8px 24px 24px; /* right padding keeps the bar off the corner */
+  scrollbar-gutter: stable;
+  scrollbar-color: #d4a840 transparent;
+  scrollbar-width: thin;
+}
+
+.manage-watchlist-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.manage-watchlist-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.manage-watchlist-body::-webkit-scrollbar-thumb {
+  background: #d4a840;
+  background-clip: padding-box;
+  border: 2px solid transparent; /* floats the thumb inward */
+  border-radius: 999px;
+}
+
+.manage-watchlist-body::-webkit-scrollbar-thumb:hover {
+  background: #c9880d;
+  background-clip: padding-box;
 }
 
 /* Manage watchlist: segmented tab switcher. */
