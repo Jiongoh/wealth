@@ -3058,13 +3058,26 @@ button.sub-chip:disabled {
   border: 1px solid rgba(34, 35, 42, 0.1);
   border-radius: 30px;
   box-shadow: 0 24px 70px rgba(52, 43, 28, 0.24);
+  display: flex;
+  flex-direction: column;
   max-height: min(760px, calc(100vh - 40px));
   max-width: calc(100vw - 48px);
   min-width: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 24px;
+  /* Shell clips to rounded corners; right padding keeps the scrollbar
+     inside the straight sidewall so it never hits the corner curves.
+     At radius 30 px the curve eats 12 px into the side at the first
+     scrolled content line (24 px padding-top).  20 px right padding on
+     the shell ensures the 6 px scrollbar (16–20 px) clears the arc. */
+  overflow: hidden;
+  padding: 0 20px 0 0;
   width: min(560px, 100%);
+}
+
+.base-modal-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 4px 24px 24px;
 }
 
 .modal-header {
@@ -3328,26 +3341,11 @@ button.sub-chip:disabled {
   margin: 0 25px 16px;
 }
 
-/* Manage watchlist: fixed header + tabs, inner scroll body so the
-   scrollbar stays inside the rounded modal border. */
-.manage-watchlist-modal {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.manage-watchlist-modal .modal-header,
-.manage-watchlist-modal .manage-tabs {
-  flex: 0 0 auto;
-}
-
+/* Manage watchlist: title, tabs and panels all scroll together inside the
+   shared .base-modal-scroll, so the scrollbar runs full-height and is clipped
+   by the shell's rounded corners. No per-element scroll/inset needed here. */
 .manage-watchlist-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  /* keep the thumb a hair off the content edge, still well inside the border */
-  margin-right: -6px;
-  padding-right: 6px;
+  display: contents;
 }
 
 /* Manage watchlist: segmented tab switcher. */

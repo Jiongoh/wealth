@@ -41,20 +41,24 @@ export function BaseModal({ children, className, description, isOpen, onClose, t
     <div className="modal-overlay" onMouseDown={onClose} role="presentation">
       <section
         aria-modal="true"
-        className={`base-modal soft-scrollbar${className ? ` ${className}` : ""}`}
+        className={`base-modal${className ? ` ${className}` : ""}`}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
       >
-        <div className="modal-header">
-          <div>
-            <h2>{title}</h2>
-            {description ? <p>{description}</p> : null}
+        {/* Shell clips the rounded corners; this inner element is the only
+            scroller, so its scrollbar runs full-height and never overflows. */}
+        <div className="base-modal-scroll soft-scrollbar">
+          <div className="modal-header">
+            <div>
+              <h2>{title}</h2>
+              {description ? <p>{description}</p> : null}
+            </div>
+            <button aria-label="Close dialog" className="modal-close-button" onClick={onClose} type="button">
+              x
+            </button>
           </div>
-          <button aria-label="Close dialog" className="modal-close-button" onClick={onClose} type="button">
-            x
-          </button>
+          {children}
         </div>
-        {children}
       </section>
     </div>
   );
