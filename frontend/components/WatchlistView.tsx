@@ -698,6 +698,25 @@ export function WatchlistView() {
       ),
     [items],
   );
+  // Green: actually-streaming symbols that aren't manual = holdings (locked).
+  const poolAuto = useMemo(
+    () => Array.from(subscribedSet).filter((symbol) => !manualSymbolSet.has(symbol)).sort(),
+    [subscribedSet, manualSymbolSet],
+  );
+  const poolManual = useMemo(
+    () =>
+      (items ?? [])
+        .filter((item) => item.realtime_enabled && !item.has_position)
+        .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+    [items],
+  );
+  const poolNone = useMemo(
+    () =>
+      (items ?? [])
+        .filter((item) => !item.has_position && !item.realtime_enabled)
+        .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+    [items],
+  );
 
   const columns: DataTableColumn<WatchlistRow>[] = [
     {
@@ -940,37 +959,53 @@ export function WatchlistView() {
         onClose={() => setManageSubscriptionOpen(false)}
         title="Subscription pool"
       >
-        <div className="subscription-manage-list">
-          {(items ?? []).length === 0 ? <EmptyState message="No watchlist tickers yet." /> : null}
-          {(items ?? []).map((item) => {
-            const source = subscriptionSource(item);
-            const locked = item.has_position;
-            const on = source !== "none";
-            const disableEnable = !on && !locked && capReached;
-            return (
-              <div className="subscription-manage-row" key={item.id}>
-                <div className="subscription-manage-symbol">
-                  <strong>{item.symbol}</strong>
-                  {item.display_name ? <span>{item.display_name}</span> : null}
-                </div>
-                {locked ? (
-                  <span className="sub-badge sub-badge-auto" title="Auto-subscribed because you hold this position">
-                    RT · locked
-                  </span>
-                ) : (
-                  <button
-                    className={`subscription-toggle${on ? " is-on" : ""}`}
-                    disabled={isSaving || disableEnable}
-                    onClick={() => toggleSubscription(item)}
-                    title={disableEnable ? "Subscription limit reached" : on ? "Click to unsubscribe" : "Click to subscribe"}
-                    type="button"
-                  >
-                    {on ? "Subscribed" : disableEnable ? "Limit reached" : "Subscribe"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+        <div className="subscription-pool-chips">
+          {poolAuto.length === 0 && poolManual.length === 0 && poolNone.length === 0 ? (
+            <span className="watchlist-muted">No symbols yet.</span>
+          ) : null}
+          {poolAuto.map((symbol) => (
+            <span className="sub-chip sub-chip-auto" key={`auto-${symbol}`} title="Holding · auto-subscribed (locked)">
+              {symbol}
+              <span className="sub-chip-icon" aria-hidden="true">🔒</span>
+            </span>
+          ))}
+          {poolManual.map((item) => (
+            <button
+              className="sub-chip sub-chip-manual"
+              disabled={isSaving}
+              key={`manual-${item.symbol}`}
+              onClick={() => toggleSubscription(item)}
+              title="Manually subscribed · click to unsubscribe"
+              type="button"
+            >
+              {item.symbol}
+              <span className="sub-chip-icon" aria-hidden="true">×</span>
+            </button>
+          ))}
+          {poolNone.map((item) => (
+            <button
+              className="sub-chip sub-chip-none"
+              disabled={isSaving || capReached}
+              key={`none-${item.symbol}`}
+              onClick={() => toggleSubscription(item)}
+              title={capReached ? "Subscription limit reached" : "Delayed only · click to subscribe"}
+              type="button"
+            >
+              {item.symbol}
+              <span className="sub-chip-icon" aria-hidden="true">+</span>
+            </button>
+          ))}
+        </div>
+        <div className="subscription-pool-legend">
+          <span>
+            <span className="legend-dot legend-dot-auto" /> Holding (auto, locked)
+          </span>
+          <span>
+            <span className="legend-dot legend-dot-manual" /> Manual subscription
+          </span>
+          <span>
+            <span className="legend-dot legend-dot-none" /> Delayed only
+          </span>
         </div>
       </BaseModal>
 

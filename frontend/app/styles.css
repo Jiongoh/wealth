@@ -2221,60 +2221,97 @@ h1 {
   opacity: 0.5;
 }
 
-/* Subscription pool card. */
-/* Manage subscription modal. */
-.subscription-manage-list {
-  display: grid;
-  gap: 8px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.subscription-manage-row {
-  align-items: center;
-  background: var(--surface-muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+/* Subscription pool modal (chips). */
+.subscription-pool-chips {
   display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 10px 14px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.subscription-manage-symbol {
-  display: grid;
-  gap: 2px;
-}
-
-.subscription-manage-symbol span {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.subscription-toggle {
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+.sub-chip {
+  align-items: center;
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 720;
-  padding: 6px 14px;
-  white-space: nowrap;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+  padding: 5px 11px;
 }
 
-.subscription-toggle.is-on {
+.sub-chip-icon {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+button.sub-chip {
+  cursor: pointer;
+}
+
+button.sub-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sub-chip-auto {
+  background: var(--sub-auto-soft);
+  border-color: var(--sub-auto-soft);
+  color: var(--sub-auto);
+}
+
+.sub-chip-manual {
   background: var(--sub-manual-soft);
   border-color: var(--sub-manual-soft);
   color: var(--sub-manual);
 }
 
-.subscription-toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+.sub-chip-manual:hover:not(:disabled) {
+  border-color: var(--sub-manual);
 }
 
-/* Add-ticker tag checkboxes. */
+.sub-chip-none {
+  background: var(--sub-none-soft);
+  border-color: var(--sub-none-soft);
+  color: var(--sub-none);
+}
+
+.sub-chip-none:hover:not(:disabled) {
+  border-color: var(--sub-none);
+}
+
+.subscription-pool-legend {
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.subscription-pool-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.legend-dot {
+  border-radius: 50%;
+  height: 9px;
+  width: 9px;
+}
+
+.legend-dot-auto {
+  background: var(--sub-auto);
+}
+
+.legend-dot-manual {
+  background: var(--sub-manual);
+}
+
+.legend-dot-none {
+  background: var(--sub-none);
+}
+
 /* Add ticker modal */
 .ticker-manager {
   display: grid;
