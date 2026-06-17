@@ -2222,15 +2222,12 @@ h1 {
 }
 
 /* Subscription pool card. */
-.subscription-pool-card {
-  margin-top: 20px;
-  padding-bottom: 22px;
-}
-
+/* Manage subscription modal. */
 .subscription-manage-list {
   display: grid;
   gap: 8px;
-  padding: 0 4px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .subscription-manage-row {
