@@ -3328,6 +3328,28 @@ button.sub-chip:disabled {
   margin: 0 25px 16px;
 }
 
+/* Manage watchlist: fixed header + tabs, inner scroll body so the
+   scrollbar stays inside the rounded modal border. */
+.manage-watchlist-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.manage-watchlist-modal .modal-header,
+.manage-watchlist-modal .manage-tabs {
+  flex: 0 0 auto;
+}
+
+.manage-watchlist-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* keep the thumb a hair off the content edge, still well inside the border */
+  margin-right: -6px;
+  padding-right: 6px;
+}
+
 /* Manage watchlist: segmented tab switcher. */
 .manage-tabs {
   background: var(--surface-muted);

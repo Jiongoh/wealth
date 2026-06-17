@@ -1071,6 +1071,7 @@ export function WatchlistView() {
           </button>
         </div>
 
+        <div className="manage-watchlist-body scroll-area">
         {manageTab === "tickers" ? (
         <div className="ticker-manager">
           <form className="ticker-add-form" onSubmit={addTicker}>
@@ -1406,6 +1407,7 @@ export function WatchlistView() {
           {dialogError ? <p className="form-error">{dialogError}</p> : null}
         </div>
         ) : null}
+        </div>
       </BaseModal>
 
       <BaseModal
