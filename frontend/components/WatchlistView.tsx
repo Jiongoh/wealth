@@ -183,8 +183,8 @@ export function WatchlistView() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [manageTickersOpen, setManageTickersOpen] = useState(false);
-  const [manageTagsOpen, setManageTagsOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [manageTab, setManageTab] = useState<"tickers" | "tags">("tickers");
   const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
   const [form, setForm] = useState<TickerForm>(EMPTY_TICKER_FORM);
   const [tagForm, setTagForm] = useState("");
@@ -267,7 +267,7 @@ export function WatchlistView() {
   }, [filterNotice]);
 
   useEffect(() => {
-    if (!manageTickersOpen) {
+    if (!manageOpen || manageTab !== "tickers") {
       setSymbolResults([]);
       setSymbolSearchOpen(false);
       setIsSymbolSearching(false);
@@ -313,7 +313,7 @@ export function WatchlistView() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [form.symbol, manageTickersOpen]);
+  }, [form.symbol, manageOpen, manageTab]);
 
   async function addTicker(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -610,26 +610,24 @@ export function WatchlistView() {
     setSymbolSearchError(null);
   }
 
-  function openManageTickers() {
-    setDialogError(null);
-    setManageTickersOpen(true);
-  }
-
-  function closeManageTickers() {
-    setManageTickersOpen(false);
-    setDialogError(null);
-    resetTickerForm();
-  }
-
-  function openManageTags() {
+  function openManage(tab: "tickers" | "tags") {
     setDialogError(null);
     setEditingTagId(null);
     setEditingTagName("");
-    setManageTagsOpen(true);
+    setManageTab(tab);
+    setManageOpen(true);
+  }
+
+  function closeManage() {
+    setManageOpen(false);
+    setDialogError(null);
+    setEditingTagId(null);
+    setEditingTagName("");
+    resetTickerForm();
   }
 
   function startManagedTickerEdit(row: WatchlistItem) {
-    setManageTickersOpen(false);
+    setManageOpen(false);
     startEdit(row);
   }
 
@@ -813,10 +811,10 @@ export function WatchlistView() {
           <p className="page-description">Track the tickers you care about, with custom tags and portfolio links.</p>
         </div>
         <div className="watchlist-header-actions">
-          <button className="secondary-button" onClick={openManageTags} type="button">
-            Manage tags
+          <button className="secondary-button" onClick={() => openManage("tickers")} type="button">
+            Manage
           </button>
-          <button className="action-button" onClick={openManageTickers} type="button">
+          <button className="action-button" onClick={() => openManage("tickers")} type="button">
             Add ticker
           </button>
         </div>
@@ -1010,13 +1008,39 @@ export function WatchlistView() {
       </BaseModal>
 
       <BaseModal
-        className="manage-tickers-modal"
-        description="Tags can be selected or typed. Symbol will be validated on add."
-        isOpen={manageTickersOpen}
-        onClose={closeManageTickers}
-        title="Add ticker"
+        className="manage-watchlist-modal"
+        description="Add tickers and organise them with custom tags — all in one place."
+        isOpen={manageOpen}
+        onClose={closeManage}
+        title="Manage watchlist"
       >
-        <div className="ticker-manager">
+        <div className="manage-tabs" role="tablist">
+          <button
+            aria-selected={manageTab === "tickers"}
+            className={`manage-tab${manageTab === "tickers" ? " is-active" : ""}`}
+            onClick={() => setManageTab("tickers")}
+            role="tab"
+            type="button"
+          >
+            <span className="manage-tab-icon" aria-hidden="true">☰</span>
+            Tickers
+            <span className="manage-tab-count">{items?.length ?? 0}</span>
+          </button>
+          <button
+            aria-selected={manageTab === "tags"}
+            className={`manage-tab${manageTab === "tags" ? " is-active" : ""}`}
+            onClick={() => setManageTab("tags")}
+            role="tab"
+            type="button"
+          >
+            <span className="manage-tab-icon" aria-hidden="true">🏷</span>
+            Tags
+            <span className="manage-tab-count">{tags.length}</span>
+          </button>
+        </div>
+
+        {manageTab === "tickers" ? (
+        <div className="ticker-manager scroll-area">
           <form className="ticker-add-form" onSubmit={addTicker}>
             <div className="ticker-field">
               <span className="ticker-field-label">Symbol</span>
@@ -1158,14 +1182,29 @@ export function WatchlistView() {
 
           <section className="ticker-existing">
             <p className="ticker-existing-label">Existing tickers</p>
+            <p className="ticker-existing-help">
+              Delete removes only the watchlist entry. Imported IBKR data is kept. Held positions are locked.
+            </p>
             {items && items.length > 0 ? (
-              <div className="ticker-existing-list">
+              <div className="ticker-existing-list scroll-area">
                 {items.map((item) => (
                   <div className="ticker-row" key={item.id}>
                     <div className="ticker-row-main">
                       <div className="ticker-row-head">
                         <strong>{item.symbol}</strong>
-                        {item.has_position ? <span className="ticker-row-status"> · Holding</span> : null}
+                        {item.has_position ? (
+                          <>
+                            <span className="ticker-row-holding">Holding</span>
+                            <span
+                              className="ticker-row-ibkr"
+                              title="Held positions sync from IBKR and can't be removed."
+                            >
+                              🔒 IBKR
+                            </span>
+                          </>
+                        ) : (
+                          <span className="ticker-row-noposition">No position</span>
+                        )}
                       </div>
                       {item.tags.length > 0 ? (
                         <div className="ticker-row-tags">
@@ -1215,40 +1254,45 @@ export function WatchlistView() {
             )}
           </section>
         </div>
-      </BaseModal>
+        ) : null}
 
-      <BaseModal
-        description="Add, rename, or delete tags globally. Global deletion removes the tag from all tickers."
-        isOpen={manageTagsOpen}
-        onClose={() => setManageTagsOpen(false)}
-        title="Manage Tags"
-      >
-        <div className="tag-manager">
+        {manageTab === "tags" ? (
+        <div className="tag-manager scroll-area">
           <section className="tag-manager-section">
-            <h3>Add Tags</h3>
-            <form className="modal-form" onSubmit={addTags}>
-              <label className="filter-field">
-                <span>Tag names</span>
-                <input
-                  autoFocus
-                  onChange={(event) => setTagForm(event.target.value)}
-                  placeholder="CPO, Optical, AI Infra"
-                  value={tagForm}
-                />
-              </label>
-              <div className="modal-actions">
-                <button className="action-button" disabled={isSaving} type="submit">
-                  Add
-                </button>
-              </div>
+            <span className="ticker-field-label">Add tags</span>
+            <form className="tag-add-row" onSubmit={addTags}>
+              <input
+                onChange={(event) => setTagForm(event.target.value)}
+                placeholder="CPO, Optical, AI Infra"
+                value={tagForm}
+              />
+              <button className="action-button" disabled={isSaving} type="submit">
+                Add tags
+              </button>
             </form>
           </section>
 
           <section className="tag-manager-section">
-            <h3>Existing tags</h3>
-            <p className="tag-manager-help">Delete here is global. It removes the tag from all tickers, but keeps every ticker.</p>
+            <span className="ticker-field-label">System filters</span>
+            <div className="tag-system-banner">
+              <span className="tag-system-lock" aria-hidden="true">🔒</span>
+              <div className="tag-system-body">
+                <div className="tag-system-pills">
+                  <span className="tag-system-pill">All</span>
+                  <span className="tag-system-pill">Holding</span>
+                </div>
+                <p>All / Holding are built-in and can&apos;t be renamed or deleted.</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="tag-manager-section">
+            <span className="ticker-field-label">Custom tags</span>
+            <p className="tag-manager-help">
+              Deleting a tag is global: it&apos;s removed from every ticker, but the tickers stay.
+            </p>
             {tags.length > 0 ? (
-              <div className="tag-existing-list">
+              <div className="tag-existing-list scroll-area">
                 {tags.map((tag) => (
                   <div className="tag-row" key={tag.id}>
                     {editingTagId === tag.id ? (
@@ -1270,7 +1314,7 @@ export function WatchlistView() {
                       <span className="tag-row-main">
                         <span className="tag-row-dot" style={{ backgroundColor: tag.color ?? DEFAULT_TAG_COLOR }} />
                         <span className="tag-row-name">{tag.name}</span>
-                        <span className="tag-row-count">· {tag.count}</span>
+                        <span className="tag-row-count">· {tag.count} {tag.count === 1 ? "ticker" : "tickers"}</span>
                       </span>
                     )}
                     <div className="tag-row-actions">
@@ -1312,17 +1356,13 @@ export function WatchlistView() {
                 ))}
               </div>
             ) : (
-              <span className="tag-editor-empty">No tags created yet.</span>
+              <span className="tag-editor-empty">No custom tags yet.</span>
             )}
           </section>
 
           {dialogError ? <p className="form-error">{dialogError}</p> : null}
-          <div className="modal-actions">
-            <button className="secondary-button" disabled={isSaving} onClick={() => setManageTagsOpen(false)} type="button">
-              Close
-            </button>
-          </div>
         </div>
+        ) : null}
       </BaseModal>
 
       <BaseModal
@@ -1346,7 +1386,7 @@ export function WatchlistView() {
           </label>
           <div className="tag-editor">
             <span className="tag-editor-label">Tags</span>
-            <p className="tag-editor-note">Remove from this ticker only. Global tag deletion is in Manage Tags.</p>
+            <p className="tag-editor-note">Remove from this ticker only. Global tag deletion is in Manage watchlist → Tags.</p>
             <div className="tag-editor-list">
               {editForm.selectedTags.length > 0 ? (
                 editForm.selectedTags.map((tag) => (

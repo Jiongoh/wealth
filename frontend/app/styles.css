@@ -62,29 +62,33 @@ button {
   font: inherit;
 }
 
-.soft-scrollbar {
-  scrollbar-color: rgba(126, 118, 107, 0.35) rgba(248, 241, 227, 0.54);
+/* Shared thin amber scrollbar for every scroll container. */
+.soft-scrollbar,
+.scroll-area {
+  scrollbar-color: #d4a840 transparent;
   scrollbar-width: thin;
 }
 
-.soft-scrollbar::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
+.soft-scrollbar::-webkit-scrollbar,
+.scroll-area::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
 }
 
-.soft-scrollbar::-webkit-scrollbar-track {
-  background: rgba(248, 241, 227, 0.54);
-  border-radius: 999px;
+.soft-scrollbar::-webkit-scrollbar-track,
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.soft-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(126, 118, 107, 0.35);
-  border: 2px solid rgba(248, 241, 227, 0.54);
-  border-radius: 999px;
+.soft-scrollbar::-webkit-scrollbar-thumb,
+.scroll-area::-webkit-scrollbar-thumb {
+  background: #d4a840;
+  border-radius: 3px;
 }
 
-.soft-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(126, 118, 107, 0.52);
+.soft-scrollbar::-webkit-scrollbar-thumb:hover,
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: #c9880d;
 }
 
 .soft-glass,
@@ -2411,9 +2415,19 @@ button.sub-chip:disabled {
   text-transform: uppercase;
 }
 
+.ticker-existing-help {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: -2px 0 2px;
+}
+
 .ticker-existing-list {
   display: grid;
   gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .ticker-row {
@@ -2428,9 +2442,10 @@ button.sub-chip:disabled {
 }
 
 .ticker-row-head {
-  align-items: baseline;
+  align-items: center;
   display: flex;
-  gap: 2px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ticker-row-head strong {
@@ -2442,6 +2457,31 @@ button.sub-chip:disabled {
   color: var(--sub-auto);
   font-size: 12px;
   font-weight: 650;
+}
+
+.ticker-row-noposition {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ticker-row-holding {
+  color: var(--sub-auto);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.ticker-row-ibkr {
+  align-items: center;
+  background: rgba(201, 136, 13, 0.14);
+  border-radius: var(--radius-pill);
+  color: #a4700a;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 720;
+  gap: 3px;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
 }
 
 .ticker-row-tags {
@@ -2461,6 +2501,9 @@ button.sub-chip:disabled {
 .tag-existing-list {
   display: grid;
   gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .tag-row {
@@ -3202,6 +3245,122 @@ button.sub-chip:disabled {
 
 .watchlist-panel > .error-state {
   margin: 0 25px 16px;
+}
+
+/* Manage watchlist: segmented tab switcher. */
+.manage-tabs {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+}
+
+.manage-tab {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 680;
+  gap: 7px;
+  justify-content: center;
+  padding: 8px 14px;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.manage-tab.is-active {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 4px 12px rgba(79, 61, 34, 0.08);
+  color: var(--text);
+}
+
+.manage-tab-icon {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.manage-tab-count {
+  background: rgba(34, 35, 42, 0.08);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 720;
+  min-width: 22px;
+  padding: 1px 7px;
+  text-align: center;
+}
+
+.manage-tab.is-active .manage-tab-count {
+  background: rgba(201, 136, 13, 0.16);
+  color: #a4700a;
+}
+
+/* Tags tab: batch add row. */
+.tag-add-row {
+  display: flex;
+  gap: 10px;
+}
+
+.tag-add-row input {
+  flex: 1;
+}
+
+.tag-add-row .action-button {
+  flex-shrink: 0;
+}
+
+/* Tags tab: locked system-filter banner. */
+.tag-system-banner {
+  align-items: flex-start;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.tag-system-lock {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0.7;
+}
+
+.tag-system-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tag-system-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-system-pill {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 12px;
+}
+
+.tag-system-body p {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 .tag-manager {
