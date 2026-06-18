@@ -2279,7 +2279,7 @@ h1 {
 }
 
 .ticker-card-symbol {
-  color: #d4a840;
+  color: #8a6410;
   display: block;
   font-size: 15px;
   font-weight: 740;
@@ -2290,7 +2290,9 @@ h1 {
   color: var(--text-muted);
   display: block;
   font-size: 12px;
+  font-weight: 400;
   margin-top: 2px;
+  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
