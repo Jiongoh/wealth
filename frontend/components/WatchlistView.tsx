@@ -283,24 +283,6 @@ export function WatchlistView() {
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
-  // Grow the rendered card window as the sentinel scrolls into view.
-  useEffect(() => {
-    const sentinel = watchlistSentinelRef.current;
-    if (!sentinel) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setVisibleCount((current) => current + WATCHLIST_PAGE_SIZE);
-        }
-      },
-      { rootMargin: "240px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [visibleCount, rows.length]);
-
   // Close the custom-tag action menu on outside click or any scroll (the menu
   // is fixed-positioned, so scrolling would otherwise detach it from the pill).
   useEffect(() => {
@@ -772,6 +754,25 @@ export function WatchlistView() {
   const visibleRows = rows.slice(0, visibleCount);
   const hasMoreRows = visibleCount < rows.length;
   const holdingCount = items?.filter((item) => item.has_position).length ?? 0;
+
+  // Grow the rendered card window as the sentinel scrolls into view. Declared
+  // after `rows` so its dependency on rows.length is in scope.
+  useEffect(() => {
+    const sentinel = watchlistSentinelRef.current;
+    if (!sentinel) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((current) => current + WATCHLIST_PAGE_SIZE);
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleCount, rows.length]);
   const allFiltersCleared = selectedTags.length === 0 && !holdingOnly;
 
   const subscribedSet = useMemo(
