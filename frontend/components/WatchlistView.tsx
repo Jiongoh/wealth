@@ -221,6 +221,11 @@ export function WatchlistView() {
   const [symbolSearchError, setSymbolSearchError] = useState<string | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<MarketSubscriptionPlan | null>(null);
   const [quotes, setQuotes] = useState<Record<string, MarketQuote>>({});
+  // Company name + exchange per symbol, lazily fetched from the Nasdaq Symbol
+  // Directory (GET /symbols/{symbol}) as cards become visible and cached here.
+  // A value of null means "looked up, not in the directory".
+  const [symbolMeta, setSymbolMeta] = useState<Record<string, { name: string | null; exchange: string | null } | null>>({});
+  const symbolMetaRequestedRef = useRef<Set<string>>(new Set());
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
@@ -818,6 +823,39 @@ export function WatchlistView() {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [visibleCount, rows.length]);
+
+  // Lazily fetch company name + exchange for the symbols currently rendered,
+  // deduped via a ref so each symbol is requested at most once per session.
+  const visibleSymbolsKey = visibleRows.map((row) => row.symbol.toUpperCase()).join(",");
+  useEffect(() => {
+    const pending = Array.from(new Set(visibleSymbolsKey.split(",").filter(Boolean))).filter(
+      (symbol) => !symbolMetaRequestedRef.current.has(symbol),
+    );
+    if (pending.length === 0) {
+      return;
+    }
+    let active = true;
+    pending.forEach((symbol) => symbolMetaRequestedRef.current.add(symbol));
+    void Promise.all(
+      pending.map(async (symbol) => {
+        try {
+          const info = await api.symbolInfo(symbol);
+          return [symbol, { name: info.name, exchange: info.exchange }] as const;
+        } catch {
+          // 404 (not in directory) or network error: cache null so we don't retry.
+          return [symbol, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (active) {
+        setSymbolMeta((current) => ({ ...current, ...Object.fromEntries(entries) }));
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [visibleSymbolsKey]);
+
   const allFiltersCleared = selectedTags.length === 0 && !holdingOnly;
 
   const subscribedSet = useMemo(
@@ -1053,6 +1091,9 @@ export function WatchlistView() {
                   const price = priceFor(row);
                   const change = changePctFor(row);
                   const isCloseFallback = priceIsIbkrClose(row);
+                  const meta = symbolMeta[row.symbol.toUpperCase()];
+                  const companyName = meta?.name ?? row.display_name ?? null;
+                  const exchange = meta?.exchange ?? null;
                   return (
                     <Link
                       className="ticker-card"
@@ -1063,8 +1104,11 @@ export function WatchlistView() {
                       <div className="ticker-card-head">
                         <div className="ticker-card-id">
                           <strong className="ticker-card-symbol">{row.symbol}</strong>
-                          {row.display_name ? (
-                            <span className="ticker-card-company">{row.display_name}</span>
+                          {companyName ? (
+                            <span className="ticker-card-company">{companyName}</span>
+                          ) : null}
+                          {exchange ? (
+                            <span className="ticker-card-exchange">{exchange}</span>
                           ) : null}
                         </div>
                         <SubscriptionBadge source={subscriptionSource(row)} />
