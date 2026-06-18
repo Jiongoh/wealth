@@ -94,7 +94,8 @@ const MAX_TAGS_PER_TICKER = 5;
 const MAX_TAGS_PER_REQUEST = 5;
 const MAX_SELECTED_FILTER_TAGS = 5;
 const TAG_FILTER_COLLAPSED_COUNT = 6;
-const PAGE_SIZE = 10;
+// Tracked-ticker cards lazy-load in batches as the page scrolls (no pager).
+const WATCHLIST_PAGE_SIZE = 24;
 // Existing-tickers list lazy-loads in batches as the modal scrolls (no nested scrollbar).
 const TICKER_PAGE_INCREMENT = 12;
 const DEFAULT_TAG_COLOR = "#F7DFA6";
@@ -183,7 +184,8 @@ export function WatchlistView() {
   const [holdingOnly, setHoldingOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(WATCHLIST_PAGE_SIZE);
+  const watchlistSentinelRef = useRef<HTMLDivElement | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [manageTab, setManageTab] = useState<"tickers" | "tags">("tickers");
   const [tickerRenderLimit, setTickerRenderLimit] = useState(TICKER_PAGE_INCREMENT);
@@ -257,7 +259,7 @@ export function WatchlistView() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setDebouncedSearch(search.trim());
-      setPage(1);
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
     }, 350);
 
     return () => window.clearTimeout(timeoutId);
@@ -280,6 +282,24 @@ export function WatchlistView() {
     const timeoutId = window.setTimeout(() => setToast(null), 2600);
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
+
+  // Grow the rendered card window as the sentinel scrolls into view.
+  useEffect(() => {
+    const sentinel = watchlistSentinelRef.current;
+    if (!sentinel) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((current) => current + WATCHLIST_PAGE_SIZE);
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleCount, rows.length]);
 
   // Close the custom-tag action menu on outside click or any scroll (the menu
   // is fixed-positioned, so scrolling would otherwise detach it from the pill).
@@ -413,7 +433,7 @@ export function WatchlistView() {
         notes: form.notes.trim() || null,
       });
       resetTickerForm();
-      setPage(1);
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
     } catch (requestError: unknown) {
       setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
@@ -442,7 +462,7 @@ export function WatchlistView() {
       await loadWatchlist();
       setSelectedTags([]);
       setHoldingOnly(false);
-      setPage(1);
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
     } catch (requestError: unknown) {
       setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
     } finally {
@@ -484,7 +504,7 @@ export function WatchlistView() {
       setEditingTagName("");
       setSelectedTags([]);
       setHoldingOnly(false);
-      setPage(1);
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
     } catch (requestError: unknown) {
       setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
@@ -508,7 +528,7 @@ export function WatchlistView() {
       setEditingTagName("");
       setSelectedTags([]);
       setHoldingOnly(false);
-      setPage(1);
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
       setEditForm((current) => ({
         ...current,
@@ -552,7 +572,7 @@ export function WatchlistView() {
         notes: editForm.notes.trim() || null,
       });
       setEditingSymbol(null);
-      setPage(1);
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
     } catch (requestError: unknown) {
       setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
@@ -593,7 +613,7 @@ export function WatchlistView() {
       if (editingSymbol === symbol) {
         setEditingSymbol(null);
       }
-      setPage(1);
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Request failed.");
@@ -624,13 +644,13 @@ export function WatchlistView() {
     setSelectedTags([]);
     setHoldingOnly(false);
     setFilterNotice(null);
-    setPage(1);
+    setVisibleCount(WATCHLIST_PAGE_SIZE);
   }
 
   function toggleHoldingFilter() {
     setHoldingOnly((current) => !current);
     setFilterNotice(null);
-    setPage(1);
+    setVisibleCount(WATCHLIST_PAGE_SIZE);
   }
 
   function toggleFilterTag(tag: string) {
@@ -648,7 +668,7 @@ export function WatchlistView() {
       setFilterNotice(null);
       return [...current, tag];
     });
-    setPage(1);
+    setVisibleCount(WATCHLIST_PAGE_SIZE);
   }
 
   function selectSymbolResult(result: SymbolSearchResult) {
@@ -736,6 +756,11 @@ export function WatchlistView() {
 
         return matchesHolding && matchesTags && matchesSearch;
       })
+      // Holdings first, then manually-subscribed, then unsubscribed; symbol A→Z within each group.
+      .sort((a, b) => {
+        const rank = (item: WatchlistItem) => (item.has_position ? 0 : item.realtime_enabled ? 1 : 2);
+        return rank(a) - rank(b) || a.symbol.localeCompare(b.symbol);
+      })
       .map((item) => ({
         ...item,
         status: item.has_position ? "Holding" : "No Position",
@@ -744,9 +769,8 @@ export function WatchlistView() {
       }));
   }, [debouncedSearch, holdingOnly, items, selectedTags]);
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pagedRows = rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const visibleRows = rows.slice(0, visibleCount);
+  const hasMoreRows = visibleCount < rows.length;
   const holdingCount = items?.filter((item) => item.has_position).length ?? 0;
   const allFiltersCleared = selectedTags.length === 0 && !holdingOnly;
 
@@ -776,6 +800,21 @@ export function WatchlistView() {
     }
     const quote = quotes[item.symbol.toUpperCase()];
     return quote?.last_price ?? item.current_price;
+  }
+
+  // Approximate intraday change for subscribed symbols only: latest price vs the
+  // most recent completed bar close (the only reference available client-side).
+  function changePctFor(item: WatchlistItem): number | null {
+    if (!isSubscribed(item)) {
+      return null;
+    }
+    const quote = quotes[item.symbol.toUpperCase()];
+    const last = decimalNumber(quote?.last_price ?? item.current_price);
+    const reference = decimalNumber(quote?.last_bar_close ?? null);
+    if (last === null || reference === null || reference === 0) {
+      return null;
+    }
+    return ((last - reference) / reference) * 100;
   }
 
   const manualSymbolSet = useMemo(
@@ -926,14 +965,15 @@ export function WatchlistView() {
           </div>
         ) : (
           <>
-            {pagedRows.length === 0 ? (
+            {rows.length === 0 ? (
               <div className="panel-state">
                 <EmptyState message="No tickers match the selected filter." title="No matches" />
               </div>
             ) : (
               <div className="ticker-card-grid">
-                {pagedRows.map((row) => {
+                {visibleRows.map((row) => {
                   const price = priceFor(row);
+                  const change = changePctFor(row);
                   return (
                     <Link
                       className="ticker-card"
@@ -971,24 +1011,21 @@ export function WatchlistView() {
                         ) : (
                           <span className="ticker-card-price">{`$${formatNumber(price)}`}</span>
                         )}
+                        {change !== null ? (
+                          <span
+                            className={`ticker-card-change ${change > 0 ? "is-up" : change < 0 ? "is-down" : "is-flat"}`}
+                          >
+                            {`${change > 0 ? "+" : ""}${change.toFixed(2)}%`}
+                          </span>
+                        ) : null}
                       </div>
                     </Link>
                   );
                 })}
               </div>
             )}
-            {totalPages > 1 ? (
-              <div className="pagination-controls">
-                <button className="secondary-button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} type="button">
-                  Previous
-                </button>
-                <span>
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button className="secondary-button" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} type="button">
-                  Next
-                </button>
-              </div>
+            {hasMoreRows ? (
+              <div className="ticker-card-sentinel" ref={watchlistSentinelRef} aria-hidden="true" />
             ) : null}
           </>
         )}

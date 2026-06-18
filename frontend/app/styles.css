@@ -2241,7 +2241,7 @@ h1 {
 }
 
 .ticker-card-symbol {
-  color: var(--text);
+  color: #d4a840;
   display: block;
   font-size: 15px;
   font-weight: 740;
@@ -2329,6 +2329,28 @@ h1 {
 .ticker-card-price.is-muted {
   color: var(--text-muted);
   font-weight: 600;
+}
+
+.ticker-card-change {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ticker-card-change.is-up {
+  color: #1f9d57;
+}
+
+.ticker-card-change.is-down {
+  color: #d2483c;
+}
+
+.ticker-card-change.is-flat {
+  color: var(--text-muted);
+}
+
+.ticker-card-sentinel {
+  height: 1px;
+  width: 100%;
 }
 
 .watchlist-table-footer {
