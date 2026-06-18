@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import {
   api,
+  ApiError,
   type DecimalValue,
   type MarketQuote,
   type MarketSubscriptionPlan,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/api";
 
 type SubscriptionSource = "auto" | "manual" | "none";
+type ToastTone = "info" | "success" | "error";
 
 // Warn once realtime subscriptions reach this share of the Alpaca free-tier cap.
 const SUBSCRIPTION_WARN_RATIO = 0.8;
@@ -222,7 +224,7 @@ export function WatchlistView() {
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -326,7 +328,7 @@ export function WatchlistView() {
       return;
     }
     event.preventDefault();
-    setToast(`Subscribe to market data for ${item.symbol} first to view its details.`);
+    setToast({ message: `Subscribe to market data for ${item.symbol} first to view its details.`, tone: "info" });
   }
 
   // Reset the lazy-load window whenever the modal opens or the Tickers tab is shown.
@@ -421,6 +423,21 @@ export function WatchlistView() {
     setIsSaving(true);
     setDialogError(null);
     try {
+      // Only allow symbols that exist in the Nasdaq Symbol Directory; reject
+      // anything else before creating a watchlist record. Modal stays open.
+      try {
+        await api.symbolInfo(symbol);
+      } catch (lookupError: unknown) {
+        if (lookupError instanceof ApiError && lookupError.status === 404) {
+          setDialogError(`${symbol} was not found in the symbol directory.`);
+          setToast({ message: `Couldn't add ${symbol}: not a recognised symbol.`, tone: "error" });
+        } else {
+          setDialogError(lookupError instanceof Error ? lookupError.message : "Symbol lookup failed.");
+          setToast({ message: `Couldn't add ${symbol}. Please try again.`, tone: "error" });
+        }
+        return;
+      }
+
       await api.createWatchlistTicker({
         symbol,
         tags: parsedTags,
@@ -430,8 +447,11 @@ export function WatchlistView() {
       resetTickerForm();
       setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
+      setManageOpen(false);
+      setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
     } catch (requestError: unknown) {
       setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
+      setToast({ message: `Couldn't add ${symbol}. Please try again.`, tone: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -873,15 +893,30 @@ export function WatchlistView() {
   return (
     <>
       {toast ? (
-        <div className="watchlist-toast" role="status" aria-live="polite">
+        <div className={`watchlist-toast watchlist-toast-${toast.tone}`} role="status" aria-live="polite">
           <span className="watchlist-toast-icon" aria-hidden="true">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 8v5" />
-              <path d="M12 16.5h.01" />
+              {toast.tone === "success" ? (
+                <>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+                </>
+              ) : toast.tone === "error" ? (
+                <>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M15 9l-6 6" />
+                  <path d="M9 9l6 6" />
+                </>
+              ) : (
+                <>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v5" />
+                  <path d="M12 16.5h.01" />
+                </>
+              )}
             </svg>
           </span>
-          {toast}
+          {toast.message}
         </div>
       ) : null}
       <div className="page-header">

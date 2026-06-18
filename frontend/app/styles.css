@@ -3250,6 +3250,25 @@ button.sub-chip:disabled {
   flex-shrink: 0;
 }
 
+/* Success / error tones override the default amber (info) styling. */
+.watchlist-toast-success {
+  border-color: rgba(46, 145, 78, 0.34);
+  color: #1f7a43;
+}
+
+.watchlist-toast-success .watchlist-toast-icon {
+  color: #2e914e;
+}
+
+.watchlist-toast-error {
+  border-color: rgba(193, 58, 58, 0.34);
+  color: #b23535;
+}
+
+.watchlist-toast-error .watchlist-toast-icon {
+  color: #c13a3a;
+}
+
 @keyframes watchlist-toast-in {
   from {
     opacity: 0;
