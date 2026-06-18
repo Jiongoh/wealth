@@ -102,6 +102,6 @@ def _run_scheduled_job(db, settings: Settings, job_key: str) -> None:
         SyncRunner(SyncService(settings)).run(db, trigger=f"scheduled:{job_key}", skip_if_busy=True)
         return
     if job_key == NASDAQ_SYMBOL_SYNC_JOB_KEY:
-        SymbolDirectorySyncService().import_from_csv(db)
+        SymbolDirectorySyncService().sync_from_nasdaq(db)
         return
     logger.warning("Scheduled sync skipped: unsupported job_key=%s", job_key)

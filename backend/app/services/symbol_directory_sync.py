@@ -1,9 +1,11 @@
 import csv
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -13,6 +15,25 @@ from app.models import SyncJob, SyncRun, UsSymbol
 NASDAQ_SYMBOL_SYNC_JOB_KEY = "nasdaq_symbol_sync"
 DEFAULT_SYMBOL_CSV_PATH = "/root/wealth/storage/symbols/us_symbols.csv"
 CONTAINER_SYMBOL_CSV_PATH = "/app/storage/symbols/us_symbols.csv"
+
+# The official Nasdaq Symbol Directory is published as two pipe-delimited files.
+# The HTTPS mirror below is the same content served over FTP at
+# ftp.nasdaqtrader.com/SymbolDirectory/.
+NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+NASDAQ_DOWNLOAD_TIMEOUT_SECONDS = 30.0
+NASDAQ_EXCHANGE_NAME = "NASDAQ"
+
+# otherlisted.txt encodes the listing venue as a single-letter code; map it to
+# the display names already stored from the previous CSV import so the data
+# stays consistent across the cut-over.
+OTHER_EXCHANGE_NAMES = {
+    "A": "NYSE American",
+    "N": "NYSE",
+    "P": "NYSE Arca",
+    "Z": "Cboe BZX",
+    "V": "IEX",
+}
 
 CSV_COLUMNS = {
     "symbol",
@@ -28,6 +49,9 @@ CSV_COLUMNS = {
 }
 UPSERT_BATCH_SIZE = 1000
 
+# Callable that fetches a URL and returns its raw bytes; injectable for tests.
+Fetcher = Callable[[str], bytes]
+
 
 @dataclass(frozen=True)
 class SymbolDirectorySyncResult:
@@ -41,18 +65,59 @@ class SymbolDirectorySyncResult:
 
 
 class SymbolDirectorySyncService:
+    def sync_from_nasdaq(self, db: Session, *, fetch: Fetcher | None = None) -> SymbolDirectorySyncResult:
+        """Download the live Nasdaq Symbol Directory (nasdaqlisted.txt +
+        otherlisted.txt) and import it. This is the real sync path: unlike the
+        previous flow it does not depend on a manually refreshed local CSV."""
+        fetcher = fetch or self._download
+        artifact_path = f"{NASDAQ_LISTED_URL},{OTHER_LISTED_URL}"
+
+        def load_records() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            nasdaq_rows = self._parse_nasdaq_listed(fetcher(NASDAQ_LISTED_URL))
+            other_rows = self._parse_other_listed(fetcher(OTHER_LISTED_URL))
+            # other-listed first so a (rare) duplicate symbol resolves to the
+            # Nasdaq-listed record.
+            records: dict[str, dict[str, Any]] = {}
+            for record in (*other_rows, *nasdaq_rows):
+                records[record["symbol"]] = record
+            metadata = {
+                "nasdaqlisted_rows": len(nasdaq_rows),
+                "otherlisted_rows": len(other_rows),
+            }
+            return list(records.values()), metadata
+
+        return self._run_sync(db, source="nasdaq_trader", artifact_path=artifact_path, load_records=load_records)
+
     def import_from_csv(
         self,
         db: Session,
         file_path: str = DEFAULT_SYMBOL_CSV_PATH,
+    ) -> SymbolDirectorySyncResult:
+        """Import from a local CSV file (used by the offline sync_symbols
+        script and as a manual fallback)."""
+
+        def load_records() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            resolved_path = self._resolve_file_path(file_path)
+            records = self._read_csv(resolved_path)
+            return records, {"requested_path": file_path, "resolved_path": str(resolved_path)}
+
+        return self._run_sync(db, source="local_csv", artifact_path=file_path, load_records=load_records)
+
+    def _run_sync(
+        self,
+        db: Session,
+        *,
+        source: str,
+        artifact_path: str,
+        load_records: Callable[[], tuple[list[dict[str, Any]], dict[str, Any]]],
     ) -> SymbolDirectorySyncResult:
         started_at = datetime.now(UTC)
         sync_run = SyncRun(
             job_key=NASDAQ_SYMBOL_SYNC_JOB_KEY,
             started_at=started_at,
             status="running",
-            artifact_path=file_path,
-            metadata_json={"source": "local_csv", "requested_path": file_path},
+            artifact_path=artifact_path,
+            metadata_json={"source": source},
         )
         db.add(sync_run)
         db.commit()
@@ -60,8 +125,7 @@ class SymbolDirectorySyncService:
         sync_run_id = sync_run.id
 
         try:
-            resolved_path = self._resolve_file_path(file_path)
-            records = self._read_csv(resolved_path)
+            records, extra_metadata = load_records()
             existing_symbols = set(
                 db.scalars(select(UsSymbol.symbol).where(UsSymbol.symbol.in_([row["symbol"] for row in records]))).all()
             )
@@ -79,13 +143,12 @@ class SymbolDirectorySyncService:
             sync_run.rows_updated = rows_updated
             sync_run.rows_deleted = 0
             sync_run.metadata_json = {
-                "source": "local_csv",
-                "requested_path": file_path,
-                "resolved_path": str(resolved_path),
+                "source": source,
+                **extra_metadata,
                 "unique_symbols": rows_total,
             }
             sync_run.message = (
-                "Imported Nasdaq Symbol Directory CSV. "
+                f"Imported Nasdaq Symbol Directory ({source}). "
                 f"rows_total={rows_total}, rows_inserted={rows_inserted}, rows_updated={rows_updated}."
             )
             self._update_job(db, status="success", last_run_at=finished_at)
@@ -96,7 +159,7 @@ class SymbolDirectorySyncService:
                 rows_total=rows_total,
                 rows_inserted=rows_inserted,
                 rows_updated=rows_updated,
-                artifact_path=file_path,
+                artifact_path=artifact_path,
                 error_message=None,
             )
         except Exception as exc:
@@ -108,7 +171,7 @@ class SymbolDirectorySyncService:
                     job_key=NASDAQ_SYMBOL_SYNC_JOB_KEY,
                     started_at=started_at,
                     status="failed",
-                    artifact_path=file_path,
+                    artifact_path=artifact_path,
                 )
                 db.add(sync_run)
             error_message = _summarize_error(exc)
@@ -125,12 +188,85 @@ class SymbolDirectorySyncService:
                 rows_total=sync_run.rows_total or 0,
                 rows_inserted=sync_run.rows_inserted or 0,
                 rows_updated=sync_run.rows_updated or 0,
-                artifact_path=file_path,
+                artifact_path=artifact_path,
                 error_message=sync_run.error_message,
             )
 
-    def download_from_nasdaq(self) -> None:
-        raise NotImplementedError("Remote Nasdaq Symbol Directory download is not implemented")
+    def _download(self, url: str) -> bytes:
+        response = httpx.get(
+            url,
+            headers={"User-Agent": "wealth-symbol-sync/1.0"},
+            timeout=NASDAQ_DOWNLOAD_TIMEOUT_SECONDS,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        return response.content
+
+    def _parse_nasdaq_listed(self, content: bytes) -> list[dict[str, Any]]:
+        # Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares
+        records: list[dict[str, Any]] = []
+        for fields in self._iter_pipe_rows(content, expected_header="Symbol"):
+            symbol = _clean_text(fields[0])
+            if symbol is None:
+                continue
+            records.append(
+                {
+                    "symbol": symbol.upper(),
+                    "name": _clean_text(fields[1]),
+                    "exchange": NASDAQ_EXCHANGE_NAME,
+                    "market_category": _clean_text(fields[2]),
+                    "test_issue": _clean_text(fields[3]),
+                    "financial_status": _clean_text(fields[4]),
+                    "round_lot_size": _parse_int_lenient(fields[5]),
+                    "is_etf": _parse_bool_lenient(fields[6]),
+                    "is_nextshares": _parse_bool_lenient(fields[7]),
+                    "source_file": "nasdaqlisted.txt",
+                }
+            )
+        return records
+
+    def _parse_other_listed(self, content: bytes) -> list[dict[str, Any]]:
+        # ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol
+        records: list[dict[str, Any]] = []
+        for fields in self._iter_pipe_rows(content, expected_header="ACT Symbol"):
+            symbol = _clean_text(fields[0])
+            if symbol is None:
+                continue
+            exchange_code = _clean_text(fields[2])
+            records.append(
+                {
+                    "symbol": symbol.upper(),
+                    "name": _clean_text(fields[1]),
+                    "exchange": OTHER_EXCHANGE_NAMES.get(exchange_code, exchange_code) if exchange_code else None,
+                    "market_category": None,
+                    "test_issue": _clean_text(fields[6]),
+                    "financial_status": None,
+                    "round_lot_size": _parse_int_lenient(fields[5]),
+                    "is_etf": _parse_bool_lenient(fields[4]),
+                    "is_nextshares": None,
+                    "source_file": "otherlisted.txt",
+                }
+            )
+        return records
+
+    def _iter_pipe_rows(self, content: bytes, *, expected_header: str) -> Iterator[list[str]]:
+        text = content.decode("utf-8", errors="replace")
+        lines = text.splitlines()
+        if not lines:
+            raise ValueError("Nasdaq directory file was empty")
+        header = lines[0].split("|")
+        if not header or header[0].strip() != expected_header:
+            raise ValueError(f"Unexpected Nasdaq directory header: {lines[0][:80]!r}")
+        for line in lines[1:]:
+            if not line.strip():
+                continue
+            # The files end with a "File Creation Time: ..." trailer row.
+            if line.startswith("File Creation Time"):
+                continue
+            fields = line.split("|")
+            if len(fields) < 8:
+                continue
+            yield fields
 
     def _resolve_file_path(self, file_path: str) -> Path:
         path = Path(file_path)
@@ -238,12 +374,34 @@ def _parse_bool(value: str | None, line_number: int, column: str) -> bool | None
     raise ValueError(f"Symbol CSV row {line_number} has invalid {column}: {cleaned}")
 
 
+def _parse_int_lenient(value: str | None) -> int | None:
+    cleaned = _clean_text(value)
+    if cleaned is None:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError:
+        return None
+
+
+def _parse_bool_lenient(value: str | None) -> bool | None:
+    cleaned = _clean_text(value)
+    if cleaned is None:
+        return None
+    normalized = cleaned.upper()
+    if normalized == "Y":
+        return True
+    if normalized == "N":
+        return False
+    return None
+
+
 def _duration_ms(started_at: datetime, finished_at: datetime) -> int:
     return int((finished_at - started_at).total_seconds() * 1000)
 
 
 def _summarize_error(exc: Exception) -> str:
-    message = str(exc).splitlines()[0]
+    message = str(exc).splitlines()[0] if str(exc) else exc.__class__.__name__
     if len(message) > 1000:
         message = f"{message[:997]}..."
     return f"{type(exc).__name__}: {message}"

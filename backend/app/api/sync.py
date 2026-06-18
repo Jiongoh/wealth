@@ -81,7 +81,7 @@ def run_sync_job(
 ) -> SyncRunResponse:
     _get_sync_job_or_404(db, job_key)
     if job_key == NASDAQ_SYMBOL_SYNC_JOB_KEY:
-        result = SymbolDirectorySyncService().import_from_csv(db)
+        result = SymbolDirectorySyncService().sync_from_nasdaq(db)
         sync_run = db.get(SyncRun, result.sync_run_id)
         if sync_run is None:
             raise RuntimeError("Symbol directory synchronization run disappeared")
