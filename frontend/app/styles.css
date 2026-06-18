@@ -2291,9 +2291,9 @@ h1 {
   color: var(--text-muted);
   display: block;
   font-size: 12px;
-  font-weight: 400;
+  font-style: italic;
+  font-weight: 650;
   margin-top: 2px;
-  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
