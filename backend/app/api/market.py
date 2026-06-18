@@ -17,7 +17,7 @@ from app.schemas import (
     MarketSubscriptionPlanResponse,
     MarketSubscriptionRequest,
 )
-from app.services.alpaca_feed import resolve_market_data_route
+from app.services.alpaca_feed import MarketDataRoute, resolve_market_data_route
 from app.services.market_data_subscription import MarketDataSubscriptionService
 
 router = APIRouter(prefix="/market", tags=["market"])
@@ -42,16 +42,40 @@ def get_market_status(db: Session = Depends(get_db)) -> list[MarketProviderStatu
 
 
 @router.get("/quotes", response_model=list[MarketQuoteResponse])
-def get_market_quotes(db: Session = Depends(get_db)) -> list[MarketQuote]:
-    return list(
+def get_market_quotes(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_market_settings),
+) -> list[dict[str, object]]:
+    # Return one best-selected quote per symbol using the same provider
+    # selection + serialization as the single-quote endpoint, so the watchlist
+    # cards see the same active-provider price and previous_close as the details
+    # page (rather than whichever raw provider row sorted last).
+    route = resolve_market_data_route(settings.alpaca_feed_mode)
+    rows = list(
         db.scalars(
             select(MarketQuote).order_by(
                 MarketQuote.symbol.asc(),
+                func.coalesce(MarketQuote.source_timestamp, MarketQuote.updated_at).desc(),
+                MarketQuote.updated_at.desc(),
                 MarketQuote.provider.asc(),
                 MarketQuote.feed.asc(),
             )
         ).all()
     )
+    if not rows:
+        return []
+    active_status = db.scalar(
+        select(MarketProviderStatus)
+        .where(MarketProviderStatus.provider == route.active_provider)
+        .where(MarketProviderStatus.feed == route.active_feed)
+    )
+    grouped: dict[str, list[MarketQuote]] = {}
+    for row in rows:
+        grouped.setdefault(row.symbol, []).append(row)
+    return [
+        _resolve_quote_response(quotes, route=route, active_status=active_status)
+        for quotes in grouped.values()
+    ]
 
 
 @router.get("/quotes/{symbol}", response_model=MarketQuoteResponse | None)
@@ -78,22 +102,29 @@ def get_market_quote(
     )
     if not quotes:
         return None
-
-    active_quote = next(
-        (
-            quote
-            for quote in quotes
-            if quote.provider == route.active_provider and quote.feed == route.active_feed
-        ),
-        None,
-    )
-    yahoo_quote = next((quote for quote in quotes if quote.provider == "yahoo" and quote.feed == "yahoo"), None)
-    latest_available = quotes[0]
     active_status = db.scalar(
         select(MarketProviderStatus)
         .where(MarketProviderStatus.provider == route.active_provider)
         .where(MarketProviderStatus.feed == route.active_feed)
     )
+    return _resolve_quote_response(quotes, route=route, active_status=active_status)
+
+
+def _resolve_quote_response(
+    quotes: list[MarketQuote],
+    *,
+    route: MarketDataRoute,
+    active_status: MarketProviderStatus | None,
+) -> dict[str, object]:
+    """Pick the best quote among a single symbol's provider rows (active feed,
+    Yahoo fallback, then most recent) and serialize it. `quotes` must be ordered
+    most-recent-first so `quotes[0]` is the latest-available fallback."""
+    active_quote = next(
+        (quote for quote in quotes if quote.provider == route.active_provider and quote.feed == route.active_feed),
+        None,
+    )
+    yahoo_quote = next((quote for quote in quotes if quote.provider == "yahoo" and quote.feed == "yahoo"), None)
+    latest_available = quotes[0]
     selected = _select_market_quote(active_quote=active_quote, yahoo_quote=yahoo_quote, latest_available=latest_available)
     bid_ask_quote = _select_bid_ask_quote(selected, quotes)
     return _quote_response(

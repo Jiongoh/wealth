@@ -878,22 +878,32 @@ export function WatchlistView() {
     return item.has_position || subscribedSet.has(item.symbol.toUpperCase());
   }
 
-  function priceFor(item: WatchlistItem): DecimalValue {
-    if (!isSubscribed(item)) {
-      return null;
-    }
-    const quote = quotes[item.symbol.toUpperCase()];
-    return quote?.last_price ?? item.current_price;
+  // Whether the symbol is actually receiving realtime market data right now (in
+  // the worker's subscription plan). Held positions over the cap or off-hours
+  // are NOT streaming and fall back to the IBKR flex close below.
+  function isStreaming(item: WatchlistItem): boolean {
+    return subscribedSet.has(item.symbol.toUpperCase());
   }
 
-  // Daily change for subscribed symbols: current price vs the previous session
-  // close (Alpaca prevDailyBar / Yahoo previousClose, surfaced by the API).
+  // Realtime last price when streaming; otherwise the IBKR flex-query close
+  // (held positions only). Non-held, non-streaming symbols have neither → "--".
+  function priceFor(item: WatchlistItem): DecimalValue {
+    const quote = quotes[item.symbol.toUpperCase()];
+    if (isStreaming(item) && quote && decimalNumber(quote.last_price ?? null) !== null) {
+      return quote.last_price;
+    }
+    return item.current_price;
+  }
+
+  // Daily change only for streaming symbols: realtime price vs the previous
+  // session close (Alpaca prevDailyBar / Yahoo previousClose). The IBKR close
+  // is a prior-day snapshot, so non-streaming cards show no change badge.
   function changePctFor(item: WatchlistItem): number | null {
-    if (!isSubscribed(item)) {
+    if (!isStreaming(item)) {
       return null;
     }
     const quote = quotes[item.symbol.toUpperCase()];
-    const last = decimalNumber(quote?.last_price ?? item.current_price);
+    const last = decimalNumber(quote?.last_price ?? null);
     const reference = decimalNumber(quote?.previous_close ?? null);
     if (last === null || reference === null || reference === 0) {
       return null;
@@ -901,14 +911,14 @@ export function WatchlistView() {
     return ((last - reference) / reference) * 100;
   }
 
-  // True when a card's price falls back to the IBKR flex close (held position
-  // with no live quote — off-hours or over the realtime cap).
+  // True when the displayed price is the IBKR flex close rather than a realtime
+  // quote (held position not streaming, or streaming with no tick yet).
   function priceIsIbkrClose(item: WatchlistItem): boolean {
-    if (!isSubscribed(item)) {
+    const quote = quotes[item.symbol.toUpperCase()];
+    if (isStreaming(item) && decimalNumber(quote?.last_price ?? null) !== null) {
       return false;
     }
-    const quote = quotes[item.symbol.toUpperCase()];
-    return decimalNumber(quote?.last_price ?? null) === null && decimalNumber(item.current_price) !== null;
+    return decimalNumber(item.current_price) !== null;
   }
 
   // Every symbol already in the watchlist; used to block duplicate adds and to

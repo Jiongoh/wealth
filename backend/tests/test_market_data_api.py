@@ -513,6 +513,42 @@ class MarketDataApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_batch_quotes_selects_active_provider_per_symbol(self) -> None:
+        now = utc_now()
+        with self.session_factory() as db:
+            # Fresh active-feed (alpaca/iex) quote plus a stale Yahoo fallback
+            # for the same symbol. The batch endpoint must return ONE entry that
+            # reflects the active feed, not the alphabetically-last Yahoo row.
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    last_price=Decimal("100.00"),
+                    source_timestamp=now,
+                    updated_at=now,
+                    raw_payload={"_data_source": "websocket", "_previous_close": 90.0},
+                )
+            )
+            db.add(
+                MarketQuote(
+                    symbol="LITE",
+                    provider="yahoo",
+                    feed="yahoo",
+                    last_price=Decimal("50.00"),
+                    source_timestamp=now - timedelta(hours=3),
+                    updated_at=now - timedelta(hours=3),
+                )
+            )
+            db.commit()
+
+        rows = self.client.get("/api/market/quotes").json()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["symbol"], "LITE")
+        self.assertEqual(rows[0]["last_price"], "100.00000000")
+        self.assertEqual(Decimal(rows[0]["previous_close"]), Decimal("90"))
+
     def test_market_candles_accepts_7d_range(self) -> None:
         now = utc_now()
         with self.session_factory() as db:
