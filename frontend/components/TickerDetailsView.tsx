@@ -694,8 +694,7 @@ function PriceLineChart({
           >
             <span>{formatDateTime(activePoint.timestamp)}</span>
             <strong>{formatCurrency(activePoint.price)}</strong>
-            <span>{formatFeed(activePoint.feed || feed)}</span>
-            <span>{formatFeed(activePoint.provider)}</span>
+            <span>{formatProviderFeed(activePoint.provider, activePoint.feed || feed)}</span>
             <span>{activePoint.source}</span>
           </div>
         ) : null}
