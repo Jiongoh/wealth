@@ -629,7 +629,6 @@ function PriceLineChart({
           viewBox={`0 0 ${chart.width} ${chart.height}`}
           preserveAspectRatio="none"
         >
-          <title>Price area chart</title>
           <defs>
             <linearGradient id="lite-area-gradient" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#d49a1f" stopOpacity="0.2" />
