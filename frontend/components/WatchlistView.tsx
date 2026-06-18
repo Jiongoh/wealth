@@ -420,6 +420,13 @@ export function WatchlistView() {
       setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
       return;
     }
+    // Symbols are unique in the watchlist. Block a duplicate add up front (the
+    // backend also rejects with 409) so we never overwrite an existing entry.
+    if ((items ?? []).some((entry) => entry.symbol.toUpperCase() === symbol)) {
+      setDialogError(`${symbol} is already in your watchlist.`);
+      setToast({ message: `${symbol} is already in your watchlist.`, tone: "error" });
+      return;
+    }
     setIsSaving(true);
     setDialogError(null);
     try {
@@ -450,8 +457,13 @@ export function WatchlistView() {
       setManageOpen(false);
       setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
     } catch (requestError: unknown) {
-      setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
-      setToast({ message: `Couldn't add ${symbol}. Please try again.`, tone: "error" });
+      if (requestError instanceof ApiError && requestError.status === 409) {
+        setDialogError(`${symbol} is already in your watchlist.`);
+        setToast({ message: `${symbol} is already in your watchlist.`, tone: "error" });
+      } else {
+        setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
+        setToast({ message: `Couldn't add ${symbol}. Please try again.`, tone: "error" });
+      }
     } finally {
       setIsSaving(false);
     }
@@ -861,6 +873,13 @@ export function WatchlistView() {
     return decimalNumber(quote?.last_price ?? null) === null && decimalNumber(item.current_price) !== null;
   }
 
+  // Every symbol already in the watchlist; used to block duplicate adds and to
+  // mark already-added rows in the symbol search dropdown.
+  const watchlistSymbolSet = useMemo(
+    () => new Set((items ?? []).map((item) => item.symbol.toUpperCase())),
+    [items],
+  );
+
   const manualSymbolSet = useMemo(
     () =>
       new Set(
@@ -1223,25 +1242,34 @@ export function WatchlistView() {
                       {!isSymbolSearching && !symbolSearchError && symbolResults.length === 0 ? (
                         <div className="symbol-search-status">No matching symbols</div>
                       ) : null}
-                      {symbolResults.map((result) => (
-                        <button
-                          className="symbol-search-option"
-                          key={`${result.symbol}-${result.exchange ?? "unknown"}`}
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            selectSymbolResult(result);
-                          }}
-                          role="option"
-                          type="button"
-                        >
-                          <span className="symbol-search-option-main">
-                            <strong>{result.symbol}</strong>
-                            {result.is_etf ? <span className="symbol-search-etf">ETF</span> : null}
-                          </span>
-                          <span className="symbol-search-option-name">{result.name ?? "Unnamed symbol"}</span>
-                          <span className="symbol-search-option-exchange">{result.exchange ?? "Unknown exchange"}</span>
-                        </button>
-                      ))}
+                      {symbolResults.map((result) => {
+                        const alreadyAdded = watchlistSymbolSet.has(result.symbol.toUpperCase());
+                        return (
+                          <button
+                            className={`symbol-search-option${alreadyAdded ? " is-added" : ""}`}
+                            key={`${result.symbol}-${result.exchange ?? "unknown"}`}
+                            disabled={alreadyAdded}
+                            aria-disabled={alreadyAdded}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              if (alreadyAdded) {
+                                return;
+                              }
+                              selectSymbolResult(result);
+                            }}
+                            role="option"
+                            type="button"
+                          >
+                            <span className="symbol-search-option-main">
+                              <strong>{result.symbol}</strong>
+                              {result.is_etf ? <span className="symbol-search-etf">ETF</span> : null}
+                              {alreadyAdded ? <span className="symbol-search-added">Added</span> : null}
+                            </span>
+                            <span className="symbol-search-option-name">{result.name ?? "Unnamed symbol"}</span>
+                            <span className="symbol-search-option-exchange">{result.exchange ?? "Unknown exchange"}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

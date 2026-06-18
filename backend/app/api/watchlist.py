@@ -34,8 +34,13 @@ def create_watchlist_ticker(
     symbol = payload.symbol.strip()
     if not symbol:
         raise HTTPException(status_code=422, detail="symbol is required")
+    service = WatchlistService()
+    # Symbols are unique in the watchlist; adding an existing one is rejected
+    # (rather than silently updating it) so the UI can surface a clear message.
+    if service.get_item(db, symbol) is not None:
+        raise HTTPException(status_code=409, detail=f"{symbol.upper()} is already in your watchlist")
     try:
-        return WatchlistService().upsert_item(
+        return service.upsert_item(
             db,
             symbol=symbol,
             tags=payload.tags,

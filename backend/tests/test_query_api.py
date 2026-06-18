@@ -498,6 +498,17 @@ class QueryApiTest(unittest.TestCase):
         self.assertEqual(created_item["tags"], ["CPO", "Optical"])
         self.assertFalse(created_item["has_position"])
 
+        # Symbols are unique: re-adding (any case/whitespace) is rejected with
+        # 409 instead of silently overwriting the existing entry.
+        duplicate = self.client.post(
+            "/api/watchlist",
+            json={"symbol": "COHR", "tags": ["Different"]},
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        cohr_rows = [row for row in self.client.get("/api/watchlist").json() if row["symbol"] == "COHR"]
+        self.assertEqual(len(cohr_rows), 1)
+        self.assertEqual(cohr_rows[0]["tags"], ["CPO", "Optical"])
+
         holding = self.client.post(
             "/api/watchlist",
             json={"symbol": "DEMO", "tags": ["CPO", "Semiconductor"]},

@@ -3635,6 +3635,30 @@ button.sub-chip:disabled {
   padding: 4px 6px;
 }
 
+/* Symbols already in the watchlist can't be added again. */
+.symbol-search-option.is-added {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.symbol-search-option.is-added:hover,
+.symbol-search-option.is-added:focus {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+}
+
+.symbol-search-added {
+  background: rgba(111, 78, 22, 0.1);
+  border: 1px solid rgba(111, 78, 22, 0.16);
+  border-radius: var(--radius-pill);
+  color: #6f4e16;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
 .symbol-search-option-name,
 .symbol-search-option-exchange,
 .symbol-search-status {
