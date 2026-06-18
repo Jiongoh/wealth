@@ -194,7 +194,8 @@ export function WatchlistView() {
   const [tagForm, setTagForm] = useState("");
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [editingTagName, setEditingTagName] = useState("");
-  const [openTagMenuId, setOpenTagMenuId] = useState<number | null>(null);
+  // Tag actions menu: fixed-positioned so it escapes the modal's scroll clip.
+  const [tagMenu, setTagMenu] = useState<{ id: number; left: number; top: number } | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({ symbol: "", selectedTags: [], tagInput: "", notes: "" });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -281,20 +282,28 @@ export function WatchlistView() {
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
-  // Close the custom-tag action menu when clicking outside any tag pill.
+  // Close the custom-tag action menu on outside click or any scroll (the menu
+  // is fixed-positioned, so scrolling would otherwise detach it from the pill).
   useEffect(() => {
-    if (openTagMenuId === null) {
+    if (tagMenu === null) {
       return;
     }
     function handlePointerDown(event: globalThis.MouseEvent) {
       const target = event.target as HTMLElement | null;
-      if (!target || !target.closest(".tag-manage-pill-wrap")) {
-        setOpenTagMenuId(null);
+      if (!target || (!target.closest(".tag-manage-pill-wrap") && !target.closest(".tag-menu-popover"))) {
+        setTagMenu(null);
       }
     }
+    function handleScroll() {
+      setTagMenu(null);
+    }
     document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [openTagMenuId]);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [tagMenu]);
 
   // Block navigation to the details page for symbols without realtime data; a
   // toast explains they must subscribe first.
@@ -445,13 +454,19 @@ export function WatchlistView() {
   function startTagEdit(tag: WatchlistTag) {
     setEditingTagId(tag.id);
     setEditingTagName(tag.name);
-    setOpenTagMenuId(null);
+    setTagMenu(null);
     setDialogError(null);
   }
 
-  function toggleTagMenu(tagId: number) {
+  function toggleTagMenu(tagId: number, event: { currentTarget: HTMLElement }) {
     setDialogError(null);
-    setOpenTagMenuId((current) => (current === tagId ? null : tagId));
+    setTagMenu((current) => {
+      if (current?.id === tagId) {
+        return null;
+      }
+      const rect = event.currentTarget.getBoundingClientRect();
+      return { id: tagId, left: rect.left, top: rect.bottom + 6 };
+    });
   }
 
   async function saveTagEdit(tagId: number) {
@@ -697,7 +712,7 @@ export function WatchlistView() {
     setDialogError(null);
     setEditingTagId(null);
     setEditingTagName("");
-    setOpenTagMenuId(null);
+    setTagMenu(null);
     resetTickerForm();
   }
 
@@ -1424,12 +1439,12 @@ export function WatchlistView() {
                   ) : (
                     <span className="tag-manage-pill-wrap" key={tag.id}>
                       <button
-                        aria-expanded={openTagMenuId === tag.id}
+                        aria-expanded={tagMenu?.id === tag.id}
                         aria-haspopup="menu"
                         aria-label={`Tag ${tag.name} options`}
-                        className={`tag-pill soft-chip watchlist-table-tag tag-manage-pill tag-manage-pill-trigger${openTagMenuId === tag.id ? " is-open" : ""}`}
+                        className={`tag-pill soft-chip watchlist-table-tag tag-manage-pill tag-manage-pill-trigger${tagMenu?.id === tag.id ? " is-open" : ""}`}
                         disabled={isSaving}
-                        onClick={() => toggleTagMenu(tag.id)}
+                        onClick={(event) => toggleTagMenu(tag.id, event)}
                         style={{ backgroundColor: tagColor(tag.name, tags) }}
                         type="button"
                       >
@@ -1441,8 +1456,13 @@ export function WatchlistView() {
                           </svg>
                         </span>
                       </button>
-                      {openTagMenuId === tag.id ? (
-                        <div className="tag-menu-popover" role="menu" aria-label={`${tag.name} actions`}>
+                      {tagMenu?.id === tag.id ? (
+                        <div
+                          className="tag-menu-popover"
+                          role="menu"
+                          aria-label={`${tag.name} actions`}
+                          style={{ left: tagMenu.left, top: tagMenu.top }}
+                        >
                           <button
                             className="tag-menu-item"
                             disabled={isSaving}
@@ -1460,7 +1480,7 @@ export function WatchlistView() {
                             className="tag-menu-item tag-menu-item-danger"
                             disabled={isSaving}
                             onClick={() => {
-                              setOpenTagMenuId(null);
+                              setTagMenu(null);
                               deleteGlobalTag(tag);
                             }}
                             role="menuitem"
