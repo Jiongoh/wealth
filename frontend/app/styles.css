@@ -3443,8 +3443,10 @@ button.sub-chip:disabled {
 }
 
 .tag-system-body {
-  display: grid;
-  gap: 8px;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   min-width: 0;
 }
 

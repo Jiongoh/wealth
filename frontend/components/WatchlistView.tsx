@@ -1311,13 +1311,18 @@ export function WatchlistView() {
           <section className="tag-manager-section">
             <span className="ticker-field-label">System filters</span>
             <div className="tag-system-banner">
-              <span className="tag-system-lock" aria-hidden="true">🔒</span>
+              <span className="tag-system-lock" aria-hidden="true">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </span>
               <div className="tag-system-body">
                 <div className="tag-system-pills">
                   <span className="tag-system-pill">All</span>
                   <span className="tag-system-pill">Holding</span>
                 </div>
-                <p>All / Holding are built-in and can&apos;t be renamed or deleted.</p>
+                <p>Built-in, can&apos;t be renamed or deleted.</p>
               </div>
             </div>
           </section>
