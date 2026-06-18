@@ -621,10 +621,6 @@ function PriceLineChart({
 
   return (
     <div className="details-price-chart" aria-label="Price area chart">
-      <div className="details-price-chart-meta">
-        <span>{chart.latestPoint.source === "live quote" ? "Latest quote" : "Latest close"}</span>
-        <strong>{formatCurrency(chart.latestPoint.price)}</strong>
-      </div>
       <div className="details-price-chart-canvas">
         <svg
           onMouseLeave={() => setHoveredIndex(null)}
