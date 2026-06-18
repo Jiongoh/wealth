@@ -194,6 +194,7 @@ export function WatchlistView() {
   const [tagForm, setTagForm] = useState("");
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [editingTagName, setEditingTagName] = useState("");
+  const [openTagMenuId, setOpenTagMenuId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({ symbol: "", selectedTags: [], tagInput: "", notes: "" });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -279,6 +280,21 @@ export function WatchlistView() {
     const timeoutId = window.setTimeout(() => setToast(null), 2600);
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
+
+  // Close the custom-tag action menu when clicking outside any tag pill.
+  useEffect(() => {
+    if (openTagMenuId === null) {
+      return;
+    }
+    function handlePointerDown(event: globalThis.MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target || !target.closest(".tag-manage-pill-wrap")) {
+        setOpenTagMenuId(null);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [openTagMenuId]);
 
   // Block navigation to the details page for symbols without realtime data; a
   // toast explains they must subscribe first.
@@ -429,7 +445,13 @@ export function WatchlistView() {
   function startTagEdit(tag: WatchlistTag) {
     setEditingTagId(tag.id);
     setEditingTagName(tag.name);
+    setOpenTagMenuId(null);
     setDialogError(null);
+  }
+
+  function toggleTagMenu(tagId: number) {
+    setDialogError(null);
+    setOpenTagMenuId((current) => (current === tagId ? null : tagId));
   }
 
   async function saveTagEdit(tagId: number) {
@@ -675,6 +697,7 @@ export function WatchlistView() {
     setDialogError(null);
     setEditingTagId(null);
     setEditingTagName("");
+    setOpenTagMenuId(null);
     resetTickerForm();
   }
 
@@ -1399,33 +1422,59 @@ export function WatchlistView() {
                       </button>
                     </span>
                   ) : (
-                    <span
-                      className="tag-pill soft-chip watchlist-table-tag tag-manage-pill"
-                      key={tag.id}
-                      style={{ backgroundColor: tagColor(tag.name, tags) }}
-                    >
-                      <span className="tag-manage-pill-name">{tag.name}</span>
-                      <span className="tag-manage-pill-count">{tag.count}</span>
+                    <span className="tag-manage-pill-wrap" key={tag.id}>
                       <button
-                        aria-label={`Rename ${tag.name}`}
-                        className="tag-manage-pill-act"
+                        aria-expanded={openTagMenuId === tag.id}
+                        aria-haspopup="menu"
+                        aria-label={`Tag ${tag.name} options`}
+                        className={`tag-pill soft-chip watchlist-table-tag tag-manage-pill tag-manage-pill-trigger${openTagMenuId === tag.id ? " is-open" : ""}`}
                         disabled={isSaving}
-                        onClick={() => startTagEdit(tag)}
-                        title="Rename tag"
+                        onClick={() => toggleTagMenu(tag.id)}
+                        style={{ backgroundColor: tagColor(tag.name, tags) }}
                         type="button"
                       >
-                        ✎
+                        <span className="tag-manage-pill-name">{tag.name}</span>
+                        <span className="tag-manage-pill-count">{tag.count}</span>
+                        <span className="tag-manage-pill-caret" aria-hidden="true">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
+                        </span>
                       </button>
-                      <button
-                        aria-label={`Delete ${tag.name}`}
-                        className="tag-manage-pill-act tag-manage-pill-act-danger"
-                        disabled={isSaving}
-                        onClick={() => deleteGlobalTag(tag)}
-                        title="Delete tag globally"
-                        type="button"
-                      >
-                        ✕
-                      </button>
+                      {openTagMenuId === tag.id ? (
+                        <div className="tag-menu-popover" role="menu" aria-label={`${tag.name} actions`}>
+                          <button
+                            className="tag-menu-item"
+                            disabled={isSaving}
+                            onClick={() => startTagEdit(tag)}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                            Rename
+                          </button>
+                          <button
+                            className="tag-menu-item tag-menu-item-danger"
+                            disabled={isSaving}
+                            onClick={() => {
+                              setOpenTagMenuId(null);
+                              deleteGlobalTag(tag);
+                            }}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
                     </span>
                   ),
                 )}

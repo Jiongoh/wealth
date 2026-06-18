@@ -2629,6 +2629,111 @@ button.sub-chip:disabled {
   width: 96px;
 }
 
+/* Custom-tag pill that opens an actions popover (rename / delete). */
+.tag-manage-pill-wrap {
+  display: inline-flex;
+  position: relative;
+}
+
+.tag-manage-pill-trigger {
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+
+.tag-manage-pill-trigger:hover:not(:disabled) {
+  filter: brightness(0.97);
+  transform: translateY(-1px);
+}
+
+.tag-manage-pill-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.tag-manage-pill-caret {
+  align-items: center;
+  display: inline-flex;
+  margin-left: 1px;
+  opacity: 0.55;
+  transition: transform 160ms ease;
+}
+
+.tag-manage-pill-trigger.is-open .tag-manage-pill-caret {
+  transform: rotate(180deg);
+}
+
+.tag-menu-popover {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(52, 43, 28, 0.18), 0 2px 6px rgba(52, 43, 28, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  left: 0;
+  min-width: 140px;
+  padding: 5px;
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 40;
+  animation: tag-menu-pop-in 140ms ease-out;
+}
+
+@keyframes tag-menu-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tag-menu-item {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 9px;
+  padding: 8px 11px;
+  text-align: left;
+  transition: background 120ms ease, color 120ms ease;
+  white-space: nowrap;
+}
+
+.tag-menu-item:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.tag-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tag-menu-item svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tag-menu-item-danger {
+  color: #b54538;
+}
+
+.tag-menu-item-danger svg {
+  color: #b54538;
+}
+
+.tag-menu-item-danger:hover:not(:disabled) {
+  background: rgba(255, 122, 102, 0.14);
+}
+
 .tag-row {
   align-items: center;
   background: var(--surface-muted);
