@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Component,
   type ErrorInfo,
@@ -723,6 +724,18 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
   const dataRef = useRef<DetailsData | null>(null);
   dataRef.current = data;
 
+  // Where the user came from drives the back button's label and target.
+  // Read from the ?from= query param (set by the linking pages); default to
+  // the watchlist when arriving directly or without an origin.
+  const [origin, setOrigin] = useState<"positions" | "watchlist">("watchlist");
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get("from");
+    setOrigin(from === "positions" ? "positions" : "watchlist");
+  }, [symbol]);
+  const backTarget = origin === "positions"
+    ? { href: "/positions", label: "Back to Positions" }
+    : { href: "/watchlist", label: "Back to Watchlist" };
+
   useEffect(() => {
     let active = true;
     // Switching symbols (client-side nav reuses this component): clear the
@@ -873,6 +886,14 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
           <h1>{symbol}</h1>
           <p className="page-description">Live market data, lots, and position detail for {symbol}.</p>
         </div>
+        <Link className="details-back-button" href={backTarget.href}>
+          <span className="details-back-button-icon" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </span>
+          {backTarget.label}
+        </Link>
       </div>
 
       {error ? (

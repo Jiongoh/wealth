@@ -126,7 +126,7 @@ function positionHref(symbol: string | null | undefined): string | undefined {
   if (!symbol) {
     return undefined;
   }
-  return `/details/${encodeURIComponent(symbol.toUpperCase())}`;
+  return `/details/${encodeURIComponent(symbol.toUpperCase())}?from=positions`;
 }
 
 function SortableHeader({

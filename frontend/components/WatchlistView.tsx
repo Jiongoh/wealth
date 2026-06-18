@@ -777,7 +777,7 @@ export function WatchlistView() {
           <div className="watchlist-symbol-line">
             <Link
               className="watchlist-symbol-link"
-              href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}
+              href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}?from=watchlist`}
               onClick={(event) => guardDetailsNavigation(row, event)}
             >
               {row.symbol}
@@ -842,7 +842,7 @@ export function WatchlistView() {
         <span className="watchlist-actions">
           <Link
             className="small-action-link"
-            href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}
+            href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}?from=watchlist`}
             onClick={(event) => guardDetailsNavigation(row, event)}
           >
             Details
