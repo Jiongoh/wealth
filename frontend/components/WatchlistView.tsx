@@ -209,6 +209,9 @@ export function WatchlistView() {
   const [symbolSearchError, setSymbolSearchError] = useState<string | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<MarketSubscriptionPlan | null>(null);
   const [quotes, setQuotes] = useState<Record<string, MarketQuote>>({});
+  // Earliest retained candle close per subscribed symbol — the reference the
+  // intraday change % is measured against (same candle source as the details page).
+  const [referencePrices, setReferencePrices] = useState<Record<string, number>>({});
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
@@ -245,10 +248,42 @@ export function WatchlistView() {
         map[quote.symbol.toUpperCase()] = quote;
       }
       setQuotes(map);
+      void loadReferencePrices(plan.symbols ?? []);
     } catch {
       setSubscriptionPlan(null);
       setQuotes({});
+      setReferencePrices({});
     }
+  }
+
+  // For each streamed symbol, pull the same intraday candles the details page
+  // uses and keep the earliest close as the change-% reference. Best-effort and
+  // per-symbol isolated so one failure never blanks the rest.
+  async function loadReferencePrices(symbols: string[]) {
+    if (symbols.length === 0) {
+      setReferencePrices({});
+      return;
+    }
+    const entries = await Promise.all(
+      symbols.map(async (symbol): Promise<[string, number] | null> => {
+        try {
+          const candles = await api.marketCandles(symbol, { timeframe: "1m", range: "1d" });
+          const opens = candles
+            .map((candle) => Number(candle.close))
+            .filter((value) => Number.isFinite(value) && value > 0);
+          return opens.length > 0 ? [symbol.toUpperCase(), opens[0]] : null;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const next: Record<string, number> = {};
+    for (const entry of entries) {
+      if (entry) {
+        next[entry[0]] = entry[1];
+      }
+    }
+    setReferencePrices(next);
   }
 
   useEffect(() => {
@@ -803,15 +838,15 @@ export function WatchlistView() {
     return quote?.last_price ?? item.current_price;
   }
 
-  // Approximate intraday change for subscribed symbols only: latest price vs the
-  // most recent completed bar close (the only reference available client-side).
+  // Intraday change for subscribed symbols: current price vs the earliest
+  // candle close in the retained window (same candle source as the details page).
   function changePctFor(item: WatchlistItem): number | null {
     if (!isSubscribed(item)) {
       return null;
     }
     const quote = quotes[item.symbol.toUpperCase()];
     const last = decimalNumber(quote?.last_price ?? item.current_price);
-    const reference = decimalNumber(quote?.last_bar_close ?? null);
+    const reference = referencePrices[item.symbol.toUpperCase()] ?? null;
     if (last === null || reference === null || reference === 0) {
       return null;
     }
