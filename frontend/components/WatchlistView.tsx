@@ -230,6 +230,10 @@ export function WatchlistView() {
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
+  // Themed tag-dot tooltip. Rendered fixed at the page level (with viewport
+  // coordinates captured on hover) so it escapes the watchlist panel's
+  // overflow:hidden clip instead of using an absolutely-positioned child.
+  const [tagTip, setTagTip] = useState<{ text: string; left: number; top: number } | null>(null);
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -986,6 +990,11 @@ export function WatchlistView() {
           {toast.message}
         </div>
       ) : null}
+      {tagTip ? (
+        <div className="ticker-tag-tip" role="tooltip" style={{ left: tagTip.left, top: tagTip.top }}>
+          {tagTip.text}
+        </div>
+      ) : null}
       <div className="page-header">
         <div>
           <p className="eyebrow">Personal research</p>
@@ -1129,10 +1138,14 @@ export function WatchlistView() {
                             <span
                               className="ticker-card-dot"
                               key={tag}
+                              aria-label={tag}
                               style={{ backgroundColor: tagColor(tag, tags) }}
-                            >
-                              <span className="ticker-card-dot-tip">{tag}</span>
-                            </span>
+                              onMouseEnter={(event) => {
+                                const rect = event.currentTarget.getBoundingClientRect();
+                                setTagTip({ text: tag, left: rect.left + rect.width / 2, top: rect.top });
+                              }}
+                              onMouseLeave={() => setTagTip(null)}
+                            />
                           ))
                         ) : (
                           <span className="ticker-card-dots-empty">No tags</span>

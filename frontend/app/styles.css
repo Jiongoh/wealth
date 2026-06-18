@@ -2326,27 +2326,30 @@ h1 {
   width: 11px;
 }
 
-.ticker-card-dot-tip {
-  background: #2b2c33;
-  border-radius: 6px;
-  bottom: calc(100% + 8px);
-  color: #fff;
+/* Themed tag tooltip, rendered fixed at the page level so the watchlist
+   panel's overflow:hidden can't clip it. Positioned above the hovered dot
+   (left/top are the dot's viewport centre-top). */
+.ticker-tag-tip {
+  background: linear-gradient(145deg, #fbf1d6, #f4e2b2);
+  border: 1px solid rgba(138, 100, 16, 0.32);
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(120, 92, 30, 0.22);
+  color: #5f4310;
   font-size: 11px;
-  font-weight: 600;
-  left: 50%;
-  opacity: 0;
-  padding: 4px 8px;
+  font-weight: 680;
+  letter-spacing: 0.01em;
+  padding: 5px 9px;
   pointer-events: none;
-  position: absolute;
-  transform: translateX(-50%) translateY(3px);
-  transition: opacity 130ms ease, transform 130ms ease;
+  position: fixed;
+  transform: translate(-50%, calc(-100% - 9px));
   white-space: nowrap;
-  z-index: 20;
+  z-index: 1300;
+  animation: ticker-tag-tip-in 120ms ease-out;
 }
 
-.ticker-card-dot-tip::after {
-  border: 4px solid transparent;
-  border-top-color: #2b2c33;
+.ticker-tag-tip::after {
+  border: 5px solid transparent;
+  border-top-color: #f4e2b2;
   content: "";
   left: 50%;
   position: absolute;
@@ -2354,9 +2357,15 @@ h1 {
   transform: translateX(-50%);
 }
 
-.ticker-card-dot:hover .ticker-card-dot-tip {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
+@keyframes ticker-tag-tip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% - 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, calc(-100% - 9px));
+  }
 }
 
 .ticker-card-dots-empty {
