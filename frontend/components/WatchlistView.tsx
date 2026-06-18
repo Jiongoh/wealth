@@ -846,9 +846,6 @@ export function WatchlistView() {
           <button className="secondary-button" onClick={() => openManage("tickers")} type="button">
             Manage
           </button>
-          <button className="action-button" onClick={() => openManage("tickers")} type="button">
-            Add ticker
-          </button>
         </div>
       </div>
 
@@ -932,7 +929,6 @@ export function WatchlistView() {
             </button>
           ) : null}
         </div>
-        <p className="tag-filter-info">All / Holding are system filters and can&apos;t be edited or removed.</p>
         {filterNotice ? <p className="filter-notice">{filterNotice}</p> : null}
         {error ? <ErrorState message={error} title="Watchlist request failed" /> : null}
         {isLoading ? (

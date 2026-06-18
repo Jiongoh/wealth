@@ -2135,7 +2135,7 @@ h1 {
 }
 
 .watchlist-symbol-link {
-  color: var(--text);
+  color: #d4a840;
   font-weight: 720;
   text-decoration: none;
 }
