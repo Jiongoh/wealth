@@ -1036,6 +1036,11 @@ def _upsert_quote(db: Session, *, provider: str, feed: str, message: dict[str, o
         previous = quote.raw_payload.get("_bid_ask_timestamp") if isinstance(quote.raw_payload, dict) else None
         if isinstance(previous, str):
             message["_bid_ask_timestamp"] = previous
+    # Carry the bootstrap-fetched previous close forward; a streaming quote
+    # message doesn't carry it and would otherwise wipe raw_payload.
+    prev_close = quote.raw_payload.get("_previous_close") if isinstance(quote.raw_payload, dict) else None
+    if isinstance(prev_close, (int, float)) and not isinstance(prev_close, bool):
+        message["_previous_close"] = prev_close
     quote.source_timestamp = source_timestamp
     quote.updated_at = utc_now()
     quote.raw_payload = message
