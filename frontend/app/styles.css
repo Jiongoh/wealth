@@ -2240,7 +2240,8 @@ h1 {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
-  margin-top: 6px;
+  /* Inset from the panel edges (matches the header's horizontal padding). */
+  margin: 6px 26px 26px;
 }
 
 .ticker-card {
