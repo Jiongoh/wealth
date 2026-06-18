@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -49,3 +49,19 @@ def search_symbols(
         .limit(safe_limit)
     )
     return list(db.scalars(statement).all())
+
+
+@router.get("/{symbol}", response_model=SymbolSearchResult)
+def get_symbol(
+    symbol: str,
+    db: Session = Depends(get_db),
+) -> UsSymbol:
+    """Single-symbol lookup from the Nasdaq Symbol Directory sync (name +
+    exchange). Used by the ticker details page header."""
+    normalized = symbol.strip().upper()
+    if not normalized:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+    row = db.scalar(select(UsSymbol).where(func.upper(UsSymbol.symbol) == normalized))
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Symbol not found: {normalized}")
+    return row

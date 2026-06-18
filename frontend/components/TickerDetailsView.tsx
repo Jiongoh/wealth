@@ -21,6 +21,7 @@ import {
   type DecimalValue,
   type MarketCandle,
   type MarketQuote,
+  type SymbolSearchResult,
 } from "@/lib/api";
 
 const QUOTE_REFRESH_MS = 15_000;
@@ -728,6 +729,35 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
     const from = new URLSearchParams(window.location.search).get("from");
     setOrigin(from === "positions" ? "positions" : "watchlist");
   }, [symbol]);
+
+  // Company name + listing exchange from the Nasdaq Symbol Directory sync.
+  // Looked up once per symbol; absent for symbols not in the directory.
+  const [symbolInfo, setSymbolInfo] = useState<SymbolSearchResult | null>(null);
+  useEffect(() => {
+    let active = true;
+    setSymbolInfo(null);
+    api
+      .symbolInfo(symbol)
+      .then((info) => {
+        if (active) {
+          setSymbolInfo(info);
+        }
+      })
+      .catch(() => {
+        // 404 (symbol not in directory) or network error: fall back to the
+        // generic subtitle below; nothing actionable to surface here.
+      });
+    return () => {
+      active = false;
+    };
+  }, [symbol]);
+  const symbolName = symbolInfo?.name?.trim() || null;
+  const symbolExchange = symbolInfo?.exchange?.trim() || null;
+  const symbolSubtitle = symbolName
+    ? symbolExchange
+      ? `${symbolName} · ${symbolExchange}`
+      : symbolName
+    : `Live market data, lots, and position detail for ${symbol}.`;
   const backTarget = origin === "positions"
     ? { href: "/positions", label: "Back to Positions" }
     : { href: "/watchlist", label: "Back to Watchlist" };
@@ -885,7 +915,7 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
         <div>
           <p className="eyebrow">Ticker details</p>
           <h1>{symbol}</h1>
-          <p className="page-description">Live market data, lots, and position detail for {symbol}.</p>
+          <p className="page-description">{symbolSubtitle}</p>
         </div>
         <Link className="details-back-button" href={backTarget.href}>
           <span className="details-back-button-icon" aria-hidden="true">

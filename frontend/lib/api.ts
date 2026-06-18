@@ -467,6 +467,8 @@ export const api = {
     request<WatchlistItem[]>(withQuery("/watchlist", { ...params })),
   searchSymbols: (params: { q: string; limit?: number }, options?: RequestInit) =>
     request<SymbolSearchResult[]>(withQuery("/symbols/search", { ...params }), options),
+  symbolInfo: (symbol: string, options?: RequestInit) =>
+    request<SymbolSearchResult>(`/symbols/${encodeURIComponent(symbol)}`, options),
   createWatchlistTicker: (payload: WatchlistPayload & { symbol: string }) =>
     request<WatchlistItem>("/watchlist", { method: "POST", body: JSON.stringify(payload) }),
   updateWatchlistTicker: (symbol: string, payload: WatchlistPayload) =>
