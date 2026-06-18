@@ -812,6 +812,7 @@ def _bootstrap_latest_data(
         "accept": "application/json",
     }
     params = {"symbols": ",".join(symbols), "feed": feed}
+    previous_closes: dict[str, float] = {}
     try:
         with httpx.Client(timeout=20.0) as client:
             quotes_response = client.get(
@@ -829,6 +830,25 @@ def _bootstrap_latest_data(
             )
             bars_response.raise_for_status()
             bars_payload = bars_response.json()
+
+            # Snapshots carry prevDailyBar (the previous session close), the
+            # reference for the daily change %. Isolated so a snapshot failure
+            # never aborts the quote/bar bootstrap above.
+            try:
+                snapshots_response = client.get(
+                    f"{ALPACA_REST_BASE_URL}/snapshots",
+                    headers=headers,
+                    params=params,
+                )
+                snapshots_response.raise_for_status()
+                previous_closes = _parse_previous_closes(snapshots_response.json())
+            except Exception as snapshot_exc:
+                logger.warning(
+                    "market-data-worker snapshot warning provider=%s feed=%s error=%s",
+                    settings.market_data_provider,
+                    feed,
+                    _safe_error_message(snapshot_exc),
+                )
     except Exception as exc:
         logger.warning(
             "market-data-worker bootstrap warning provider=%s feed=%s symbols_requested=%s error=%s",
@@ -858,6 +878,12 @@ def _bootstrap_latest_data(
                 message=message,
                 data_source=data_source,
             )
+        _store_previous_closes(
+            db,
+            provider=settings.market_data_provider,
+            feed=feed,
+            previous_closes=previous_closes,
+        )
     return BootstrapResult(
         symbols_requested=len(symbols),
         quote_symbols_returned=len(quote_messages),
@@ -865,6 +891,51 @@ def _bootstrap_latest_data(
         quote_rows_upserted=len(quote_messages),
         candle_rows_upserted=len(bar_messages),
     )
+
+
+def _parse_previous_closes(payload: object) -> dict[str, float]:
+    """Extract prevDailyBar close per symbol from an Alpaca snapshots response."""
+    result: dict[str, float] = {}
+    if not isinstance(payload, dict):
+        return result
+    container = payload.get("snapshots") if isinstance(payload.get("snapshots"), dict) else payload
+    if not isinstance(container, dict):
+        return result
+    for symbol, snapshot in container.items():
+        if not isinstance(symbol, str) or not isinstance(snapshot, dict):
+            continue
+        prev_bar = snapshot.get("prevDailyBar")
+        if not isinstance(prev_bar, dict):
+            continue
+        close = prev_bar.get("c")
+        if isinstance(close, (int, float)) and not isinstance(close, bool) and close > 0:
+            result[symbol.strip().upper()] = float(close)
+    return result
+
+
+def _store_previous_closes(
+    db: Session,
+    *,
+    provider: str,
+    feed: str,
+    previous_closes: dict[str, float],
+) -> None:
+    """Persist each symbol's previous close into its quote's raw_payload JSON
+    (no schema change). The API surfaces it as `previous_close`."""
+    if not previous_closes:
+        return
+    changed = False
+    for symbol, prev_close in previous_closes.items():
+        quote = _get_quote(db, symbol=symbol, provider=provider, feed=feed)
+        if quote is None:
+            continue
+        payload = dict(quote.raw_payload) if isinstance(quote.raw_payload, dict) else {}
+        payload["_previous_close"] = prev_close
+        quote.raw_payload = payload
+        quote.updated_at = utc_now()
+        changed = True
+    if changed:
+        db.commit()
 
 
 def _latest_payload_messages(
@@ -967,6 +1038,17 @@ def _upsert_yahoo_quote(db: Session, quote_data: YahooQuote) -> bool:
     quote.last_price = quote_data.last_price
     raw_payload = dict(quote_data.raw_payload)
     raw_payload["_data_source"] = quote_data.data_source
+    # Normalise Yahoo's previous close into the same key the API reads for Alpaca.
+    yahoo_prev = (
+        raw_payload.get("previousClose")
+        or raw_payload.get("regularMarketPreviousClose")
+        or raw_payload.get("previous_close")
+    )
+    if isinstance(yahoo_prev, (int, float)) and not isinstance(yahoo_prev, bool) and yahoo_prev > 0:
+        raw_payload["_previous_close"] = float(yahoo_prev)
+    elif isinstance(quote.raw_payload, dict) and isinstance(quote.raw_payload.get("_previous_close"), (int, float)):
+        # Preserve a previously stored value when this poll didn't carry one.
+        raw_payload["_previous_close"] = quote.raw_payload["_previous_close"]
     # Yahoo rarely returns bid/ask; keep the last known values instead of
     # wiping them on every poll.
     if quote_data.bid_price is not None or quote_data.ask_price is not None:

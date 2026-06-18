@@ -185,6 +185,9 @@ def _compact_raw(raw: dict[str, Any]) -> dict[str, Any]:
         "bid",
         "ask",
         "history_timestamp",
+        "previous_close",
+        "previousClose",
+        "regularMarketPreviousClose",
     }
     payload: dict[str, Any] = {"_data_source": "yahoo_poll", "source": "yfinance"}
     for key in allowed:

@@ -141,6 +141,16 @@ function formatNumber(value: DecimalValue, maximumFractionDigits = 2): string {
       });
 }
 
+function formatCloseDate(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function parseTags(value: string): string[] {
   const tags: string[] = [];
   const seen = new Set<string>();
@@ -209,9 +219,6 @@ export function WatchlistView() {
   const [symbolSearchError, setSymbolSearchError] = useState<string | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<MarketSubscriptionPlan | null>(null);
   const [quotes, setQuotes] = useState<Record<string, MarketQuote>>({});
-  // Earliest retained candle close per subscribed symbol — the reference the
-  // intraday change % is measured against (same candle source as the details page).
-  const [referencePrices, setReferencePrices] = useState<Record<string, number>>({});
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
@@ -248,46 +255,17 @@ export function WatchlistView() {
         map[quote.symbol.toUpperCase()] = quote;
       }
       setQuotes(map);
-      void loadReferencePrices(plan.symbols ?? []);
     } catch {
       setSubscriptionPlan(null);
       setQuotes({});
-      setReferencePrices({});
     }
-  }
-
-  // For each streamed symbol, pull the same intraday candles the details page
-  // uses and keep the earliest close as the change-% reference. Best-effort and
-  // per-symbol isolated so one failure never blanks the rest.
-  async function loadReferencePrices(symbols: string[]) {
-    if (symbols.length === 0) {
-      setReferencePrices({});
-      return;
-    }
-    const entries = await Promise.all(
-      symbols.map(async (symbol): Promise<[string, number] | null> => {
-        try {
-          const candles = await api.marketCandles(symbol, { timeframe: "1m", range: "1d" });
-          const opens = candles
-            .map((candle) => Number(candle.close))
-            .filter((value) => Number.isFinite(value) && value > 0);
-          return opens.length > 0 ? [symbol.toUpperCase(), opens[0]] : null;
-        } catch {
-          return null;
-        }
-      }),
-    );
-    const next: Record<string, number> = {};
-    for (const entry of entries) {
-      if (entry) {
-        next[entry[0]] = entry[1];
-      }
-    }
-    setReferencePrices(next);
   }
 
   useEffect(() => {
     loadSubscriptionData();
+    // Keep subscribed prices and the change % fresh, like the details page.
+    const intervalId = window.setInterval(loadSubscriptionData, 15_000);
+    return () => window.clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -838,19 +816,29 @@ export function WatchlistView() {
     return quote?.last_price ?? item.current_price;
   }
 
-  // Intraday change for subscribed symbols: current price vs the earliest
-  // candle close in the retained window (same candle source as the details page).
+  // Daily change for subscribed symbols: current price vs the previous session
+  // close (Alpaca prevDailyBar / Yahoo previousClose, surfaced by the API).
   function changePctFor(item: WatchlistItem): number | null {
     if (!isSubscribed(item)) {
       return null;
     }
     const quote = quotes[item.symbol.toUpperCase()];
     const last = decimalNumber(quote?.last_price ?? item.current_price);
-    const reference = referencePrices[item.symbol.toUpperCase()] ?? null;
+    const reference = decimalNumber(quote?.previous_close ?? null);
     if (last === null || reference === null || reference === 0) {
       return null;
     }
     return ((last - reference) / reference) * 100;
+  }
+
+  // True when a card's price falls back to the IBKR flex close (held position
+  // with no live quote — off-hours or over the realtime cap).
+  function priceIsIbkrClose(item: WatchlistItem): boolean {
+    if (!isSubscribed(item)) {
+      return false;
+    }
+    const quote = quotes[item.symbol.toUpperCase()];
+    return decimalNumber(quote?.last_price ?? null) === null && decimalNumber(item.current_price) !== null;
   }
 
   const manualSymbolSet = useMemo(
@@ -1010,6 +998,7 @@ export function WatchlistView() {
                 {visibleRows.map((row) => {
                   const price = priceFor(row);
                   const change = changePctFor(row);
+                  const isCloseFallback = priceIsIbkrClose(row);
                   return (
                     <Link
                       className="ticker-card"
@@ -1042,11 +1031,16 @@ export function WatchlistView() {
                         )}
                       </div>
                       <div className="ticker-card-foot">
-                        {price === null ? (
-                          <span className="ticker-card-price is-muted">--</span>
-                        ) : (
-                          <span className="ticker-card-price">{`$${formatNumber(price)}`}</span>
-                        )}
+                        <span className="ticker-card-price-wrap">
+                          {price === null ? (
+                            <span className="ticker-card-price is-muted">--</span>
+                          ) : (
+                            <span className="ticker-card-price">{`$${formatNumber(price)}`}</span>
+                          )}
+                          {isCloseFallback && row.latest_report_date ? (
+                            <span className="ticker-card-close-note">{`${formatCloseDate(row.latest_report_date)} close`}</span>
+                          ) : null}
+                        </span>
                         {change !== null ? (
                           <span
                             className={`ticker-card-change ${change > 0 ? "is-up" : change < 0 ? "is-down" : "is-flat"}`}

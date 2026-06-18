@@ -35,6 +35,7 @@ class MarketQuoteResponse(BaseModel):
     bid_ask_timestamp: datetime | None = None
     bid_ask_stale_seconds: int | None = None
     last_bar_close: Decimal | None
+    previous_close: Decimal | None = None
     source_timestamp: datetime | None = None
     updated_at: datetime
     active_provider: str | None = None

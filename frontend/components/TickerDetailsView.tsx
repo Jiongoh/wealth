@@ -39,12 +39,13 @@ type RefreshState = {
 
 type NormalizedMarketQuote = Omit<
   MarketQuote,
-  "ask_price" | "bid_price" | "last_bar_close" | "last_price"
+  "ask_price" | "bid_price" | "last_bar_close" | "last_price" | "previous_close"
 > & {
   ask_price: number | null;
   bid_price: number | null;
   last_bar_close: number | null;
   last_price: number | null;
+  previous_close: number | null;
   active_feed?: string | null;
   bid_ask_provider?: string | null;
   bid_ask_feed?: string | null;
@@ -285,6 +286,7 @@ function normalizeQuote(value: unknown, fallbackSymbol: string): NormalizedMarke
         ? row.bid_ask_stale_seconds
         : null,
     last_bar_close: marketPriceNumber(row.last_bar_close),
+    previous_close: marketPriceNumber(row.previous_close),
     data_source: typeof row.data_source === "string" ? row.data_source : null,
     is_stale: row.is_stale === true,
     source_timestamp: validTimestamp(row.source_timestamp) ?? null,
@@ -858,6 +860,11 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
   const candles = data?.candles ?? [];
   const position = data?.position ?? null;
   const latestPrice = quote?.last_price ?? quote?.last_bar_close ?? null;
+  const previousClose = quote?.previous_close ?? null;
+  const changePct =
+    latestPrice !== null && previousClose !== null && previousClose !== 0
+      ? ((latestPrice - previousClose) / previousClose) * 100
+      : null;
   const latestCandle = candles.at(-1);
   const liveQuoteTimestamp = quote?.source_timestamp ?? quote?.updated_at ?? null;
   const marketFeed = formatFeed(quote?.feed ?? latestCandle?.feed);
@@ -918,7 +925,17 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
             ) : null}
             <div className="details-hero-main">
               <span className="details-symbol">{marketClosed ? "Last Close" : "Current Price"}</span>
-              <strong>{quote ? formatCurrency(latestPrice) : "Latest data unavailable"}</strong>
+              <div className="details-price-row">
+                <strong>{quote ? formatCurrency(latestPrice) : "Latest data unavailable"}</strong>
+                {changePct !== null ? (
+                  <span
+                    className={`details-change ${changePct > 0 ? "is-up" : changePct < 0 ? "is-down" : "is-flat"}`}
+                    title="Change vs previous session close"
+                  >
+                    {`${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`}
+                  </span>
+                ) : null}
+              </div>
               <div className="details-bid-ask" aria-label="Bid and ask">
                 <span className="details-bid-ask-pair">
                   <span>Bid</span>

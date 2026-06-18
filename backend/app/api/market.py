@@ -270,6 +270,7 @@ def _quote_response(
         "bid_ask_timestamp": bid_ask_timestamp,
         "bid_ask_stale_seconds": _stale_seconds(bid_ask_timestamp, now),
         "last_bar_close": quote.last_bar_close,
+        "previous_close": _previous_close_value(quote),
         "source_timestamp": source_timestamp,
         "updated_at": quote.updated_at,
         "data_source": data_source,
@@ -350,6 +351,15 @@ def _stale_seconds(source_timestamp: datetime | None, now: datetime) -> int | No
     if source.tzinfo is None:
         source = source.replace(tzinfo=UTC)
     return max(0, int((now - source.astimezone(UTC)).total_seconds()))
+
+
+def _previous_close_value(quote: MarketQuote) -> float | None:
+    payload = quote.raw_payload
+    if isinstance(payload, dict):
+        value = payload.get("_previous_close")
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            return float(value)
+    return None
 
 
 def _raw_data_source(quote: MarketQuote) -> str:
