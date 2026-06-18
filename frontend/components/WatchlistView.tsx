@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BaseModal } from "@/components/BaseModal";
-import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
@@ -808,100 +807,6 @@ export function WatchlistView() {
     [items],
   );
 
-  const columns: DataTableColumn<WatchlistRow>[] = [
-    {
-      key: "symbol",
-      header: "Symbol",
-      render: (_, row) => (
-        <div className="watchlist-symbol-cell">
-          <div className="watchlist-symbol-line">
-            <Link
-              className="watchlist-symbol-link"
-              href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}?from=watchlist`}
-              onClick={(event) => guardDetailsNavigation(row, event)}
-            >
-              {row.symbol}
-              <span className="watchlist-symbol-arrow" aria-hidden="true">↗</span>
-            </Link>
-            <SubscriptionBadge source={subscriptionSource(row)} />
-          </div>
-          {row.display_name ? <span className="watchlist-symbol-company">{row.display_name}</span> : null}
-        </div>
-      ),
-    },
-    {
-      key: "tagList",
-      header: "Tags",
-      render: (_, row) => (
-        <span className="tag-list">
-          {row.tags.length > 0
-            ? row.tags.map((tag) => (
-                <span className="tag-pill soft-chip watchlist-table-tag" key={tag} style={{ backgroundColor: tagColor(tag, tags) }}>
-                  {tag}
-                </span>
-              ))
-            : "--"}
-        </span>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      align: "center",
-      render: (_, row) =>
-        row.has_position ? (
-          <span className="status-pill status-pill-holding">Holding</span>
-        ) : (
-          <span className="status-pill" title="No current position for this ticker.">
-            No Position
-          </span>
-        ),
-    },
-    {
-      key: "current_price",
-      header: "Price",
-      align: "right",
-      render: (_, row) => {
-        const price = priceFor(row);
-        return price === null ? <span className="watchlist-muted">—</span> : <span>{formatNumber(price)}</span>;
-      },
-    },
-    {
-      key: "market_value",
-      header: "Mkt value",
-      align: "right",
-      render: (value, row) =>
-        row.has_position ? <span>{formatNumber(value as DecimalValue)}</span> : <span className="watchlist-muted">—</span>,
-    },
-    { key: "notes", header: "Notes", render: (value) => String(value ?? "--") },
-    {
-      key: "actions",
-      header: "Actions",
-      align: "center",
-      render: (_, row) => (
-        <span className="watchlist-actions">
-          <Link
-            className="small-action-link"
-            href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}?from=watchlist`}
-            onClick={(event) => guardDetailsNavigation(row, event)}
-          >
-            Details
-          </Link>
-          <button
-            aria-label={`Edit ${row.symbol}`}
-            className="icon-action"
-            disabled={isSaving}
-            onClick={() => startEdit(row)}
-            title="Edit ticker"
-            type="button"
-          >
-            ✎
-          </button>
-        </span>
-      ),
-    },
-  ];
-
   return (
     <>
       {toast ? (
@@ -1021,12 +926,57 @@ export function WatchlistView() {
           </div>
         ) : (
           <>
-            <DataTable
-              columns={columns}
-              emptyMessage="No tickers match the selected filter."
-              getRowKey={(row) => row.id}
-              rows={pagedRows}
-            />
+            {pagedRows.length === 0 ? (
+              <div className="panel-state">
+                <EmptyState message="No tickers match the selected filter." title="No matches" />
+              </div>
+            ) : (
+              <div className="ticker-card-grid">
+                {pagedRows.map((row) => {
+                  const price = priceFor(row);
+                  return (
+                    <Link
+                      className="ticker-card"
+                      href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}?from=watchlist`}
+                      key={row.id}
+                      onClick={(event) => guardDetailsNavigation(row, event)}
+                    >
+                      <div className="ticker-card-head">
+                        <div className="ticker-card-id">
+                          <strong className="ticker-card-symbol">{row.symbol}</strong>
+                          {row.display_name ? (
+                            <span className="ticker-card-company">{row.display_name}</span>
+                          ) : null}
+                        </div>
+                        <SubscriptionBadge source={subscriptionSource(row)} />
+                      </div>
+                      <div className="ticker-card-dots" aria-label="Tags">
+                        {row.tags.length > 0 ? (
+                          row.tags.map((tag) => (
+                            <span
+                              className="ticker-card-dot"
+                              key={tag}
+                              style={{ backgroundColor: tagColor(tag, tags) }}
+                            >
+                              <span className="ticker-card-dot-tip">{tag}</span>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="ticker-card-dots-empty">No tags</span>
+                        )}
+                      </div>
+                      <div className="ticker-card-foot">
+                        {price === null ? (
+                          <span className="ticker-card-price is-muted">--</span>
+                        ) : (
+                          <span className="ticker-card-price">{`$${formatNumber(price)}`}</span>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
             {totalPages > 1 ? (
               <div className="pagination-controls">
                 <button className="secondary-button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} type="button">

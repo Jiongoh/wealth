@@ -2197,6 +2197,140 @@ h1 {
   color: var(--accent-deep);
 }
 
+/* Tracked tickers as compact cards (replaces the old table layout). */
+.ticker-card-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+  margin-top: 6px;
+}
+
+.ticker-card {
+  background:
+    linear-gradient(#fbf5e3, #fbf5e3) padding-box,
+    linear-gradient(135deg, rgba(193, 158, 74, 0.34), rgba(193, 158, 74, 0.34)) border-box;
+  border: 1.5px solid transparent;
+  border-radius: 16px;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  min-height: 118px;
+  padding: 15px 16px;
+  text-decoration: none;
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.ticker-card:hover {
+  background:
+    linear-gradient(#fbf5e3, #fbf5e3) padding-box,
+    linear-gradient(135deg, #a9781a 0%, #d6a93c 48%, #f4e1a3 100%) border-box;
+  box-shadow: 0 14px 30px rgba(120, 92, 30, 0.18);
+  transform: translateY(-3px);
+}
+
+.ticker-card-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.ticker-card-id {
+  min-width: 0;
+}
+
+.ticker-card-symbol {
+  color: var(--text);
+  display: block;
+  font-size: 15px;
+  font-weight: 740;
+  letter-spacing: -0.01em;
+}
+
+.ticker-card-company {
+  color: var(--text-muted);
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticker-card-dots {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-height: 12px;
+}
+
+.ticker-card-dot {
+  border-radius: 50%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(79, 61, 34, 0.18);
+  cursor: default;
+  height: 11px;
+  position: relative;
+  width: 11px;
+}
+
+.ticker-card-dot-tip {
+  background: #2b2c33;
+  border-radius: 6px;
+  bottom: calc(100% + 8px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  left: 50%;
+  opacity: 0;
+  padding: 4px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%) translateY(3px);
+  transition: opacity 130ms ease, transform 130ms ease;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+.ticker-card-dot-tip::after {
+  border: 4px solid transparent;
+  border-top-color: #2b2c33;
+  content: "";
+  left: 50%;
+  position: absolute;
+  top: 100%;
+  transform: translateX(-50%);
+}
+
+.ticker-card-dot:hover .ticker-card-dot-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.ticker-card-dots-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ticker-card-foot {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.ticker-card-price {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 720;
+}
+
+.ticker-card-price.is-muted {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .watchlist-table-footer {
   align-items: center;
   border-top: 1px solid var(--border);
