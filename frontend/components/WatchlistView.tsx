@@ -960,16 +960,6 @@ export function WatchlistView() {
                 </button>
               </div>
             ) : null}
-            <div className="watchlist-table-footer">
-              <span>
-                Showing {pagedRows.length} of {rows.length} tickers · prices delayed 15 min unless subscribed
-              </span>
-              {subscriptionPlan ? (
-                <span>
-                  {subscriptionPlan.subscribed_count} / {subscriptionPlan.max_symbols} realtime slots used
-                </span>
-              ) : null}
-            </div>
           </>
         )}
       </section>
