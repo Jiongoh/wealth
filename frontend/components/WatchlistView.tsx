@@ -460,13 +460,15 @@ export function WatchlistView() {
 
   function toggleTagMenu(tagId: number, event: { currentTarget: HTMLElement }) {
     setDialogError(null);
-    setTagMenu((current) => {
-      if (current?.id === tagId) {
-        return null;
-      }
-      const rect = event.currentTarget.getBoundingClientRect();
-      return { id: tagId, left: rect.left, top: rect.bottom + 6 };
-    });
+    // Read the trigger's rect synchronously: React nulls event.currentTarget
+    // once the handler returns, so it must not be touched inside the (deferred)
+    // state updater below.
+    const rect = event.currentTarget.getBoundingClientRect();
+    // Keep the menu (min-width ~140px) within the viewport for right-edge pills.
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 152));
+    setTagMenu((current) =>
+      current?.id === tagId ? null : { id: tagId, left, top: rect.bottom + 6 },
+    );
   }
 
   async function saveTagEdit(tagId: number) {
