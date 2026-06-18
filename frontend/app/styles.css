@@ -667,6 +667,41 @@ h1 {
   padding: 16px;
 }
 
+.details-chart-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(248, 241, 227, 0.6);
+  flex-shrink: 0;
+}
+
+.details-chart-range-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 640;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  padding: 5px 12px;
+  border-radius: 999px;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.details-chart-range-button:hover {
+  color: var(--text);
+}
+
+.details-chart-range-button.is-active {
+  color: #6b4e16;
+  background: linear-gradient(145deg, #f3d488, #e7b94d);
+  box-shadow: 0 1px 2px rgba(120, 85, 20, 0.25);
+}
+
 .details-price-chart-canvas,
 .details-chart-x-labels {
   /* Left gutter that hosts the Y-axis tick labels outside the plot. */
@@ -675,27 +710,6 @@ h1 {
 
 .details-price-chart-canvas {
   position: relative;
-}
-
-.details-price-chart-meta {
-  align-items: baseline;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.details-price-chart-meta span {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 720;
-  text-transform: uppercase;
-}
-
-.details-price-chart-meta strong {
-  color: var(--text);
-  font-size: 20px;
-  font-weight: 780;
 }
 
 .details-price-chart svg {

@@ -513,6 +513,64 @@ class MarketDataApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_market_candles_accepts_7d_range(self) -> None:
+        now = utc_now()
+        with self.session_factory() as db:
+            db.add(
+                MarketCandle(
+                    symbol="LITE",
+                    provider="alpaca",
+                    feed="iex",
+                    timeframe="1m",
+                    timestamp=now - timedelta(days=3),
+                    open=Decimal("70.00"),
+                    high=Decimal("70.50"),
+                    low=Decimal("69.50"),
+                    close=Decimal("70.25"),
+                    volume=Decimal("1000"),
+                )
+            )
+            db.commit()
+
+        response = self.client.get("/api/market/candles/LITE?timeframe=1m&range=7d")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+
+    def test_market_candles_downsamples_long_ranges(self) -> None:
+        now = utc_now()
+        # ~2000 one-minute candles spread across ~33h; the endpoint should
+        # bucket them down to at most MAX_CANDLE_POINTS for the chart.
+        with self.session_factory() as db:
+            for index in range(2000):
+                db.add(
+                    MarketCandle(
+                        symbol="LITE",
+                        provider="alpaca",
+                        feed="iex",
+                        timeframe="1m",
+                        timestamp=now - timedelta(minutes=2000 - index),
+                        open=Decimal("70.00"),
+                        high=Decimal("70.50"),
+                        low=Decimal("69.50"),
+                        close=Decimal(f"{70 + index * 0.001:.4f}"),
+                        volume=Decimal("1000"),
+                    )
+                )
+            db.commit()
+
+        response = self.client.get("/api/market/candles/LITE?timeframe=1m&range=7d")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()
+        self.assertLessEqual(len(rows), 721)
+        self.assertLess(len(rows), 2000)
+        # The most recent candle is always preserved (last bucket), and the
+        # downsampled series stays sorted ascending by timestamp.
+        self.assertEqual(rows[-1]["close"], "71.99900000")
+        timestamps = [row["timestamp"] for row in rows]
+        self.assertEqual(timestamps, sorted(timestamps))
+
 
 if __name__ == "__main__":
     unittest.main()

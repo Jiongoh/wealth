@@ -27,6 +27,24 @@ import {
 const QUOTE_REFRESH_MS = 15_000;
 const CANDLE_REFRESH_MS = 30_000;
 
+const DAY_MS = 86_400_000;
+
+type ChartRange = "1h" | "7d" | "1mo" | "3mo";
+
+// Range buttons for the price chart. `ms` is the x-axis window width: the axis
+// always spans the full window ending at "now", so sparse history simply leaves
+// the left side empty rather than compressing into the available points.
+const CHART_RANGES: { key: ChartRange; label: string; ms: number }[] = [
+  { key: "1h", label: "1H", ms: 3_600_000 },
+  { key: "7d", label: "7D", ms: 7 * DAY_MS },
+  { key: "1mo", label: "1M", ms: 30 * DAY_MS },
+  { key: "3mo", label: "3M", ms: 90 * DAY_MS },
+];
+
+function chartRangeMs(range: ChartRange): number {
+  return CHART_RANGES.find((entry) => entry.key === range)?.ms ?? 3_600_000;
+}
+
 type DetailsData = {
   candles: NormalizedMarketCandle[];
   position: CurrentPosition | null;
@@ -472,7 +490,21 @@ function mergeMarketChartPoints(
 }
 
 const PRICE_STEP_MULTIPLIERS = [1, 2, 2.5, 5, 10];
-const TIME_STEP_MINUTES = [1, 2, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440];
+const TIME_STEP_MINUTES = [
+  1, 2, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440, 2880, 10_080, 20_160, 43_200,
+];
+
+// Below ~36h the x-axis shows clock time; longer windows show calendar dates.
+function formatAxisLabel(time: number, rangeMs: number): string {
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  if (rangeMs <= 36 * 3_600_000) {
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 function nicePriceStep(rawStep: number): number {
   if (!Number.isFinite(rawStep) || rawStep <= 0) {
@@ -522,10 +554,12 @@ function PriceLineChart({
   candles,
   feed,
   quote,
+  rangeMs,
 }: {
   candles: NormalizedMarketCandle[];
   feed: string;
   quote: NormalizedMarketQuote | null;
+  rangeMs: number;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const chart = useMemo(() => {
@@ -549,19 +583,20 @@ function PriceLineChart({
     const minPrice = centerPrice - visibleSpread / 2 - visibleSpread * 0.08;
     const maxPrice = centerPrice + visibleSpread / 2 + visibleSpread * 0.08;
     const priceSpread = maxPrice - minPrice || 1;
-    const minTime = points[0].time;
-    const maxTime = points[points.length - 1].time;
+    // The x-axis spans the full selected window ending at "now" (or the latest
+    // point if it is somehow newer), so sparse history leaves the left side
+    // empty instead of stretching a few points across the whole chart.
+    const dataMaxTime = points[points.length - 1].time;
+    const maxTime = Math.max(Date.now(), dataMaxTime);
+    const minTime = maxTime - rangeMs;
     const timeSpread = maxTime - minTime || 1;
     const plotWidth = width - paddingX * 2;
     const plotHeight = height - paddingTop - paddingBottom;
-    const xForTime = (time: number, index = 0) =>
-      maxTime === minTime
-        ? paddingX + (index / Math.max(points.length - 1, 1)) * plotWidth
-        : paddingX + ((time - minTime) / timeSpread) * plotWidth;
+    const xForTime = (time: number) => paddingX + ((time - minTime) / timeSpread) * plotWidth;
     const yForPrice = (price: number) => paddingTop + (1 - (price - minPrice) / priceSpread) * plotHeight;
-    const plottedPoints = points.map((point, index) => ({
+    const plottedPoints = points.map((point) => ({
       ...point,
-      x: xForTime(point.time, index),
+      x: xForTime(point.time),
       y: yForPrice(point.price),
     }));
     const line = plottedPoints.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
@@ -596,7 +631,7 @@ function PriceLineChart({
       width,
       height,
     };
-  }, [candles, quote]);
+  }, [candles, quote, rangeMs]);
 
   if (!chart) {
     return (
@@ -703,7 +738,7 @@ function PriceLineChart({
       <div className="details-chart-x-labels" aria-hidden="true">
         {chart.xTicks.map((tick) => (
           <span key={`x-label-${tick.time}`} style={{ left: `${tick.xPercent}%` }}>
-            {formatTime(tick.time)}
+            {formatAxisLabel(tick.time, rangeMs)}
           </span>
         ))}
       </div>
@@ -720,6 +755,13 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
   });
   const dataRef = useRef<DetailsData | null>(null);
   dataRef.current = data;
+
+  // Selected price-chart window. The candle fetch reads the current value via a
+  // ref (so the periodic refresh in the main effect picks up changes without
+  // re-subscribing), and a dedicated effect refetches candles when it changes.
+  const [chartRange, setChartRange] = useState<ChartRange>("1h");
+  const chartRangeRef = useRef<ChartRange>(chartRange);
+  chartRangeRef.current = chartRange;
 
   // Where the user came from drives the back button's label and target.
   // Read from the ?from= query param (set by the linking pages); default to
@@ -799,7 +841,7 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
       try {
         const [quote, candles, positions] = await Promise.all([
           api.marketQuote(symbol),
-          api.marketCandles(symbol, { timeframe: "1m", range: "1h" }),
+          api.marketCandles(symbol, { timeframe: "1m", range: chartRangeRef.current }),
           api.positions(),
         ]);
         if (!active || quoteRequest !== quoteSeq || candleRequest !== candleSeq) {
@@ -856,7 +898,7 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
       }
       const request = ++candleSeq;
       try {
-        const candles = await api.marketCandles(symbol, { timeframe: "1m", range: "1h" });
+        const candles = await api.marketCandles(symbol, { timeframe: "1m", range: chartRangeRef.current });
         if (!active || request !== candleSeq) {
           return;
         }
@@ -879,6 +921,29 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
       window.clearInterval(candleInterval);
     };
   }, [symbol]);
+
+  // Range switch: refetch candles for the new window without tearing down the
+  // page. The initial load is owned by the main effect (which skips here while
+  // data is still null), so this only fires on subsequent range changes.
+  useEffect(() => {
+    if (dataRef.current === null) {
+      return;
+    }
+    let active = true;
+    api
+      .marketCandles(symbol, { timeframe: "1m", range: chartRange })
+      .then((candles) => {
+        if (active) {
+          setData((current) => (current ? { ...current, candles: normalizeCandles(candles, symbol) } : current));
+        }
+      })
+      .catch(() => {
+        // Periodic refresh in the main effect will retry; nothing to surface.
+      });
+    return () => {
+      active = false;
+    };
+  }, [chartRange, symbol]);
 
   const quote = data?.quote ?? null;
   const candles = data?.candles ?? [];
@@ -1012,8 +1077,23 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
                     <p>
                       {marketClosed
                         ? "Live charting resumes when U.S. markets reopen."
-                        : "1-minute price action for the last hour, including the latest live quote."}
+                        : chartRange === "1h"
+                          ? "Price action over the last hour, including the latest live quote."
+                          : `Price history over the selected window; gaps show where history isn't available yet.`}
                     </p>
+                  </div>
+                  <div className="details-chart-range" role="group" aria-label="Chart range">
+                    {CHART_RANGES.map((entry) => (
+                      <button
+                        key={entry.key}
+                        type="button"
+                        className={`details-chart-range-button${chartRange === entry.key ? " is-active" : ""}`}
+                        aria-pressed={chartRange === entry.key}
+                        onClick={() => setChartRange(entry.key)}
+                      >
+                        {entry.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 {!marketClosed && refreshState.warning ? (
@@ -1034,7 +1114,7 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
                     />
                   </div>
                 ) : (
-                  <PriceLineChart candles={candles} feed={marketFeed} quote={quote} />
+                  <PriceLineChart candles={candles} feed={marketFeed} quote={quote} rangeMs={chartRangeMs(chartRange)} />
                 )}
               </MarketDataBoundary>
             </article>

@@ -101,7 +101,9 @@ def load_worker_settings() -> MarketDataWorkerSettings:
         yahoo_fallback_max_symbols=int(os.getenv("YAHOO_FALLBACK_MAX_SYMBOLS", str(ALPACA_FREE_MAX_SYMBOLS))),
         yahoo_fallback_write_candles=_parse_bool(os.getenv("YAHOO_FALLBACK_WRITE_CANDLES", "true")),
         yahoo_fallback_timeout_seconds=float(os.getenv("YAHOO_FALLBACK_TIMEOUT_SECONDS", "10")),
-        market_data_retention_minutes=int(os.getenv("MARKET_DATA_RETENTION_MINUTES", "60")),
+        # ~96 days so the longest price-chart range (3mo / 93 days) always has
+        # candle history; older candles are pruned by the cleanup loop.
+        market_data_retention_minutes=int(os.getenv("MARKET_DATA_RETENTION_MINUTES", str(96 * 24 * 60))),
         market_data_cleanup_interval_seconds=int(os.getenv("MARKET_DATA_CLEANUP_INTERVAL_SECONDS", "300")),
         market_data_status_retention_days=int(os.getenv("MARKET_DATA_STATUS_RETENTION_DAYS", "7")),
     )

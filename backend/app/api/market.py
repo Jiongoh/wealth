@@ -128,7 +128,7 @@ def get_market_candles(
             .order_by(MarketCandle.timestamp.asc(), MarketCandle.provider.asc(), MarketCandle.feed.asc())
         ).all()
     )
-    return _dedupe_candles(rows)
+    return _downsample_candles(_dedupe_candles(rows))
 
 
 def _dedupe_candles(rows: list[MarketCandle]) -> list[MarketCandle]:
@@ -143,6 +143,34 @@ def _dedupe_candles(rows: list[MarketCandle]) -> list[MarketCandle]:
         if existing is None or _candle_priority(row) > _candle_priority(existing):
             best[row.timestamp] = row
     return sorted(best.values(), key=lambda row: row.timestamp)
+
+
+MAX_CANDLE_POINTS = 720
+
+
+def _downsample_candles(rows: list[MarketCandle], max_points: int = MAX_CANDLE_POINTS) -> list[MarketCandle]:
+    """Cap the number of points returned for long ranges (e.g. 3mo of 1-minute
+    candles is ~25k rows). Buckets the time span into ``max_points`` slices and
+    keeps the last candle in each, so a line chart that plots close prices keeps
+    its shape without shipping every minute. Rows must be sorted ascending.
+    """
+    if len(rows) <= max_points:
+        return rows
+    span_seconds = (rows[-1].timestamp - rows[0].timestamp).total_seconds()
+    if span_seconds <= 0:
+        return rows[-max_points:]
+    bucket_seconds = span_seconds / max_points
+    start = rows[0].timestamp
+    downsampled: list[MarketCandle] = []
+    current_bucket: int | None = None
+    for row in rows:
+        bucket = int((row.timestamp - start).total_seconds() // bucket_seconds)
+        if downsampled and bucket == current_bucket:
+            downsampled[-1] = row
+        else:
+            downsampled.append(row)
+            current_bucket = bucket
+    return downsampled
 
 
 def _candle_priority(row: MarketCandle) -> tuple[int, datetime]:
@@ -196,6 +224,7 @@ def _range_delta(value: str) -> timedelta:
         "1h": timedelta(hours=1),
         "1d": timedelta(days=1),
         "5d": timedelta(days=5),
+        "7d": timedelta(days=7),
         "1mo": timedelta(days=31),
         "3mo": timedelta(days=93),
         "6mo": timedelta(days=186),
@@ -206,7 +235,7 @@ def _range_delta(value: str) -> timedelta:
     except KeyError as exc:
         raise HTTPException(
             status_code=400,
-            detail="range must be one of 1h, 1d, 5d, 1mo, 3mo, 6mo, 1y",
+            detail="range must be one of 1h, 1d, 5d, 7d, 1mo, 3mo, 6mo, 1y",
         ) from exc
 
 
