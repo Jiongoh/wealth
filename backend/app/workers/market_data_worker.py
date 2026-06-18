@@ -841,7 +841,25 @@ def _bootstrap_latest_data(
                     params=params,
                 )
                 snapshots_response.raise_for_status()
-                previous_closes = _parse_previous_closes(snapshots_response.json())
+                snapshots_json = snapshots_response.json()
+                previous_closes = _parse_previous_closes(snapshots_json)
+                if previous_closes:
+                    logger.info(
+                        "market-data-worker snapshot previous-closes feed=%s count=%s",
+                        feed,
+                        len(previous_closes),
+                    )
+                else:
+                    # Diagnostic: reveal the response shape so we can fix the parser
+                    # without probing the credentialed endpoint by hand.
+                    top_keys = list(snapshots_json)[:3] if isinstance(snapshots_json, dict) else type(snapshots_json).__name__
+                    first = snapshots_json.get(top_keys[0]) if isinstance(snapshots_json, dict) and top_keys else None
+                    logger.warning(
+                        "market-data-worker snapshot parsed 0 prev-closes feed=%s top_keys=%s first_keys=%s",
+                        feed,
+                        top_keys,
+                        list(first) if isinstance(first, dict) else first,
+                    )
             except Exception as snapshot_exc:
                 logger.warning(
                     "market-data-worker snapshot warning provider=%s feed=%s error=%s",
