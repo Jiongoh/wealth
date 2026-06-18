@@ -50,6 +50,18 @@ class MarketQuote(Base):
     )
     raw_payload: Mapped[dict | None] = mapped_column(PAYLOAD_TYPE, nullable=True)
 
+    @property
+    def previous_close(self) -> float | None:
+        """Previous session close, stored in raw_payload (Alpaca prevDailyBar /
+        Yahoo previousClose). Exposed so both the batch quotes endpoint
+        (from_attributes) and _serialize_quote can read it without a column."""
+        payload = self.raw_payload
+        if isinstance(payload, dict):
+            value = payload.get("_previous_close")
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+                return float(value)
+        return None
+
 
 class MarketCandle(Base):
     __tablename__ = "market_candles"
