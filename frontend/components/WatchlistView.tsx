@@ -209,6 +209,7 @@ export function WatchlistView() {
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -269,6 +270,25 @@ export function WatchlistView() {
     const timeoutId = window.setTimeout(() => setFilterNotice(null), 2400);
     return () => window.clearTimeout(timeoutId);
   }, [filterNotice]);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
+
+  // Block navigation to the details page for symbols without realtime data; a
+  // toast explains they must subscribe first.
+  function guardDetailsNavigation(item: WatchlistItem, event: { preventDefault: () => void }) {
+    if (isSubscribed(item)) {
+      return;
+    }
+    event.preventDefault();
+    setToast(`Subscribe to market data for ${item.symbol} first to view its details.`);
+  }
 
   // Reset the lazy-load window whenever the modal opens or the Tickers tab is shown.
   useEffect(() => {
@@ -755,7 +775,11 @@ export function WatchlistView() {
       render: (_, row) => (
         <div className="watchlist-symbol-cell">
           <div className="watchlist-symbol-line">
-            <Link className="watchlist-symbol-link" href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}>
+            <Link
+              className="watchlist-symbol-link"
+              href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}
+              onClick={(event) => guardDetailsNavigation(row, event)}
+            >
               {row.symbol}
               <span className="watchlist-symbol-arrow" aria-hidden="true">↗</span>
             </Link>
@@ -816,7 +840,11 @@ export function WatchlistView() {
       align: "center",
       render: (_, row) => (
         <span className="watchlist-actions">
-          <Link className="small-action-link" href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}>
+          <Link
+            className="small-action-link"
+            href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}`}
+            onClick={(event) => guardDetailsNavigation(row, event)}
+          >
             Details
           </Link>
           <button
@@ -836,6 +864,18 @@ export function WatchlistView() {
 
   return (
     <>
+      {toast ? (
+        <div className="watchlist-toast" role="status" aria-live="polite">
+          <span className="watchlist-toast-icon" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v5" />
+              <path d="M12 16.5h.01" />
+            </svg>
+          </span>
+          {toast}
+        </div>
+      ) : null}
       <div className="page-header">
         <div>
           <p className="eyebrow">Personal research</p>

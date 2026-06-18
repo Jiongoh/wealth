@@ -2868,6 +2868,46 @@ button.sub-chip:disabled {
   padding: 8px 12px;
 }
 
+/* Transient toast pinned to the top of the viewport (e.g. when a user clicks
+   a symbol that has no realtime data subscription). */
+.watchlist-toast {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid rgba(212, 154, 31, 0.32);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 12px 32px rgba(52, 43, 28, 0.18);
+  color: #7a5a18;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 8px;
+  left: 50%;
+  padding: 10px 18px;
+  position: fixed;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 1200;
+  animation: watchlist-toast-in 180ms ease-out;
+}
+
+.watchlist-toast-icon {
+  align-items: center;
+  color: var(--accent-deep, #c9880d);
+  display: flex;
+  flex-shrink: 0;
+}
+
+@keyframes watchlist-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 .watchlist-panel .filter-notice {
   background: rgba(245, 200, 76, 0.18);
   border-color: rgba(212, 154, 31, 0.24);
