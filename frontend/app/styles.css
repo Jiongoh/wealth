@@ -3426,7 +3426,7 @@ button.sub-chip:disabled {
 
 /* Tags tab: locked system-filter banner. */
 .tag-system-banner {
-  align-items: flex-start;
+  align-items: center;
   background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -3436,9 +3436,9 @@ button.sub-chip:disabled {
 }
 
 .tag-system-lock {
+  align-items: center;
+  display: flex;
   flex-shrink: 0;
-  font-size: 14px;
-  line-height: 1.4;
   opacity: 0.7;
 }
 
