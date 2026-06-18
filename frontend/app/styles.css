@@ -3411,7 +3411,13 @@ button.sub-chip:disabled {
 }
 
 .tag-add-row input {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  color: var(--text);
   flex: 1;
+  font-size: 14px;
+  padding: 11px 13px;
 }
 
 .tag-add-row .action-button {
