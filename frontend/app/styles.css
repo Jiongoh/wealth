@@ -3056,18 +3056,18 @@ button.sub-chip:disabled {
 .base-modal {
   background: var(--surface);
   border: 1px solid rgba(34, 35, 42, 0.1);
-  border-radius: 30px;
+  /* Modest radius so a normal edge scrollbar is only lightly clipped at the
+     corners (no awkward gap), while overflow:hidden still prevents any bleed. */
+  border-radius: 18px;
   box-shadow: 0 24px 70px rgba(52, 43, 28, 0.24);
   display: flex;
   flex-direction: column;
   max-height: min(760px, calc(100vh - 40px));
   max-width: calc(100vw - 48px);
   min-width: 0;
+  /* Shell only clips to the rounded corners; the inner element scrolls. */
   overflow: hidden;
-  /* Tiny right padding nudges the inner scroll layer off the right border
-     so the 6 px scrollbar track stays inside the straight sidewall and
-     never hits the 30 px rounded corner arcs. */
-  padding: 0 8px 0 0;
+  padding: 0;
   width: min(560px, 100%);
 }
 
@@ -3075,11 +3075,9 @@ button.sub-chip:disabled {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  /* 16 px right padding: 24 - 8 shell.  Content spacing unchanged from the
-     original 24 px; the scrollbar sits at the element's right edge (8 px
-     from the visible border — it tucks neatly beside the content without
-     breaking the corner arcs). */
-  padding: 24px 16px 24px 24px;
+  /* Normal symmetric padding; the scrollbar sits at the element's right edge
+     (the full modal height) and is clipped by the shell's rounded corners. */
+  padding: 24px;
 }
 
 .modal-header {
