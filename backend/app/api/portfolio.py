@@ -145,28 +145,31 @@ def get_daily_performance(
     response: list[PortfolioPerformanceDailyResponse] = []
     previous_date: date | None = None
     previous_nav: Decimal | None = None
+    previous_stock: Decimal | None = None
     for report_date in sorted(nav_rows_by_date):
         rows = nav_rows_by_date[report_date]
         if not rows:
             continue
         nav = _aggregate_nav_daily(report_date, rows)
         current_nav = nav.total
+        current_stock = nav.stock
         flows = _external_cash_flows(cash_rows_by_date.get(report_date, []))
-        # NAV is in the account base currency, so only base-currency cash flows
-        # can be subtracted directly. Foreign-currency flows are surfaced in
-        # `external_cash_flows` (native units) without FX conversion.
+        # External cash flow (deposits/withdrawals) must not count as performance.
+        # Daily performance is the change in stock (market) value alone; cash and
+        # cash flows are excluded entirely. Flows are still surfaced for display
+        # in native currency (no FX conversion) via `external_cash_flows`.
         base_cash_flow = sum(
             (amount for currency, amount in flows if currency == nav.currency),
             Decimal("0"),
         )
         performance_amount = (
-            current_nav - previous_nav - base_cash_flow
-            if current_nav is not None and previous_nav is not None
+            current_stock - previous_stock
+            if current_stock is not None and previous_stock is not None
             else None
         )
         performance_pct = (
-            performance_amount / previous_nav
-            if performance_amount is not None and previous_nav is not None and previous_nav > 0
+            performance_amount / previous_stock
+            if performance_amount is not None and previous_stock is not None and previous_stock > 0
             else None
         )
         response.append(
@@ -188,6 +191,7 @@ def get_daily_performance(
         if current_nav is not None:
             previous_date = report_date
             previous_nav = current_nav
+            previous_stock = current_stock
 
     return response
 
