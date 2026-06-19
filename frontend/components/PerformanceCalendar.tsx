@@ -112,6 +112,23 @@ function recentThirtyDays(): string[] {
   return days;
 }
 
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+      <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronDown() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+      <path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const rows: T[][] = [];
   for (let index = 0; index < items.length; index += size) {
@@ -129,7 +146,13 @@ export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceC
     <article className="dperf-panel">
       <header className="dperf-head">
         <h2 className="dperf-title">Daily performance</h2>
-        {rangeLabel ? <span className="dperf-range">{rangeLabel}</span> : null}
+        {rangeLabel ? (
+          <button className="dash-daterange" type="button">
+            <CalendarIcon />
+            <span>{rangeLabel}</span>
+            <ChevronDown />
+          </button>
+        ) : null}
       </header>
 
       <div className="dperf-grid" aria-label="Daily cash-flow adjusted performance">

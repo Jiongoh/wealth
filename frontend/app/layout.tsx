@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
 import { GreetingHeader } from "@/components/GreetingHeader";
+import { TopbarActions } from "@/components/TopbarActions";
 import { UserProfileCard } from "@/components/UserProfileCard";
 import "./styles.css";
 
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <div className="content-shell">
             <header className="topbar">
               <GreetingHeader />
+              <TopbarActions />
             </header>
             <main className="page-content">{children}</main>
           </div>

@@ -340,9 +340,36 @@ button {
 .topbar {
   align-items: flex-start;
   display: flex;
-  justify-content: flex-start;
+  gap: 20px;
+  justify-content: space-between;
   margin: 2px 12px 18px;
   min-height: 66px;
+}
+
+.topbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.topbar-icon-btn {
+  align-items: center;
+  background: #faf8f5;
+  border: 1px solid #e6dfd8;
+  border-radius: 50%;
+  color: #1a1a1a;
+  cursor: pointer;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  transition: border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  width: 38px;
+}
+
+.topbar-icon-btn:hover {
+  border-color: #d97757;
+  color: #d97757;
+  transform: translateY(-1px);
 }
 
 .greeting-header {
@@ -5371,40 +5398,7 @@ button.sub-chip:disabled {
   font-family: var(--serif-display);
 }
 
-/* Toolbar -------------------------------------------------------------- */
-.dash-toolbar {
-  align-items: flex-end;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: -4px;
-}
-
-.dash-toolbar-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.dash-icon-btn {
-  align-items: center;
-  background: var(--d-card);
-  border: 1px solid var(--d-hairline);
-  border-radius: 50%;
-  color: var(--d-ink);
-  cursor: pointer;
-  display: inline-flex;
-  height: 38px;
-  justify-content: center;
-  transition: border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
-  width: 38px;
-}
-
-.dash-icon-btn:hover {
-  border-color: var(--d-coral);
-  color: var(--d-coral);
-  transform: translateY(-1px);
-}
-
+/* Date range pill ------------------------------------------------------ */
 .dash-daterange {
   align-items: center;
   background: var(--d-card);
@@ -5482,9 +5476,10 @@ button.sub-chip:disabled {
 }
 
 .dperf-head {
-  align-items: baseline;
+  align-items: center;
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  justify-content: space-between;
   margin-bottom: 18px;
 }
 
@@ -5493,17 +5488,6 @@ button.sub-chip:disabled {
   font-size: 21px;
   font-weight: 500;
   letter-spacing: -0.01em;
-}
-
-.dperf-range {
-  color: var(--d-muted);
-  font-size: 13px;
-}
-
-.dperf-range::before {
-  color: var(--d-muted-soft);
-  content: "·";
-  margin-right: 8px;
 }
 
 .dperf-grid {
@@ -5967,7 +5951,6 @@ button.sub-chip:disabled {
 .dashboard-page .dperf-cell-day,
 .dashboard-page .dperf-cell-amount,
 .dashboard-page .dperf-cell-percent,
-.dashboard-page .dperf-range,
 .dashboard-page .dash-stat-label,
 .dashboard-page .dash-stat-change,
 .dashboard-page .dash-stat-hint,

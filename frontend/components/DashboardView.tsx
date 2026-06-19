@@ -216,52 +216,6 @@ function buildActivity(trades: Trade[], activities: CashActivity[]): ActivityIte
     .slice(0, 5);
 }
 
-function HelpIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M9.4 9.2a2.6 2.6 0 0 1 5 1c0 1.7-2.4 2-2.4 3.6"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <circle cx="12" cy="17" r="0.9" fill="currentColor" />
-    </svg>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-      <path
-        d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 4 1.2 5.3 1.8 6H4.7c.6-.7 1.8-2 1.8-6Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-      <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ChevronDown() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-      <path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function ChevronRight() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
@@ -485,22 +439,6 @@ export function DashboardView() {
 
   return (
     <div className="dashboard-page">
-      <div className="dash-toolbar">
-        <div className="dash-toolbar-actions">
-          <button className="dash-icon-btn" type="button" aria-label="Help">
-            <HelpIcon />
-          </button>
-          <button className="dash-icon-btn" type="button" aria-label="Notifications">
-            <BellIcon />
-          </button>
-        </div>
-        <button className="dash-daterange" type="button">
-          <CalendarIcon />
-          <span>{rangeLabel}</span>
-          <ChevronDown />
-        </button>
-      </div>
-
       <section aria-label="Daily performance">
         <PerformanceCalendar
           currency={summary.currency}
