@@ -5580,11 +5580,12 @@ button.sub-chip:disabled {
 }
 
 .dperf-tooltip {
-  background: #d97757;
+  background: #faf9f5;
+  border: 1px solid rgba(217, 119, 87, 0.15);
   border-radius: 10px;
   bottom: calc(100% + 8px);
-  box-shadow: 0 14px 32px rgba(217, 119, 87, 0.35);
-  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(20, 20, 19, 0.05);
+  color: #6c6a64;
   font-size: 12px;
   left: 50%;
   min-width: 188px;
@@ -5599,14 +5600,18 @@ button.sub-chip:disabled {
 }
 
 .dperf-tooltip p {
-  color: rgba(255, 255, 255, 0.9);
+  color: #6c6a64;
   margin: 2px 0;
 }
 
 .dperf-tooltip-date {
-  color: #ffffff !important;
+  color: #141413 !important;
   font-weight: 600;
   margin-bottom: 4px !important;
+}
+
+.dperf-tooltip-num {
+  color: #d97757;
 }
 
 .dperf-cell:hover .dperf-tooltip,

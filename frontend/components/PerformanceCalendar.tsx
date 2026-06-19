@@ -188,10 +188,22 @@ export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceC
                         <p className="dperf-tooltip-date">{formatDisplayDate(day.date)}</p>
                         <p>
                           External cash flow:{" "}
-                          {formatSignedMoney(day.external_cash_flow, dayCurrency)}
+                          <span className="dperf-tooltip-num">
+                            {formatSignedMoney(day.external_cash_flow, dayCurrency)}
+                          </span>
                         </p>
-                        <p>Performance: {formatSignedMoney(day.performance_amount, dayCurrency)}</p>
-                        <p>Performance %: {formatSignedPercent(day.performance_pct)}</p>
+                        <p>
+                          Performance:{" "}
+                          <span className="dperf-tooltip-num">
+                            {formatSignedMoney(day.performance_amount, dayCurrency)}
+                          </span>
+                        </p>
+                        <p>
+                          Performance %:{" "}
+                          <span className="dperf-tooltip-num">
+                            {formatSignedPercent(day.performance_pct)}
+                          </span>
+                        </p>
                       </div>
                     ) : null}
                   </div>
