@@ -203,23 +203,14 @@ export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceC
                     {hasPerformance ? (
                       <div className={`dperf-tooltip dperf-tooltip-${tone}`} role="tooltip">
                         <p className="dperf-tooltip-date">{formatDisplayDate(day.date)}</p>
-                        {day.external_cash_flows && day.external_cash_flows.length > 0 ? (
-                          day.external_cash_flows.map((flow, flowIndex) => (
-                            <p key={`${flow.currency ?? "?"}-${flowIndex}`}>
-                              External cash flow:{" "}
-                              <span className="dperf-tooltip-num">
-                                {formatSignedFlow(flow.amount, flow.currency)}
-                              </span>
-                            </p>
-                          ))
-                        ) : (
-                          <p>
+                        {(day.external_cash_flows ?? []).map((flow, flowIndex) => (
+                          <p key={`${flow.currency ?? "?"}-${flowIndex}`}>
                             External cash flow:{" "}
                             <span className="dperf-tooltip-num">
-                              {formatSignedFlow(day.external_cash_flow, dayCurrency)}
+                              {formatSignedFlow(flow.amount, flow.currency)}
                             </span>
                           </p>
-                        )}
+                        ))}
                         <p>
                           Performance:{" "}
                           <span className="dperf-tooltip-num">
