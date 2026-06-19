@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import type { DecimalValue, PortfolioPerformanceDaily } from "@/lib/api";
 import { formatDisplayDate } from "@/lib/format";
 
@@ -204,23 +205,20 @@ export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceC
                       <div className={`dperf-tooltip dperf-tooltip-${tone}`} role="tooltip">
                         <p className="dperf-tooltip-date">{formatDisplayDate(day.date)}</p>
                         {(day.external_cash_flows ?? []).map((flow, flowIndex) => (
-                          <p key={`${flow.currency ?? "?"}-${flowIndex}`}>
-                            External cash flow:{" "}
-                            <span className="dperf-tooltip-num">
-                              {formatSignedFlow(flow.amount, flow.currency)}
-                            </span>
-                          </p>
+                          <Fragment key={`${flow.currency ?? "?"}-${flowIndex}`}>
+                            <p className="dperf-tooltip-label">Cash flow</p>
+                            <p>
+                              <span className="dperf-tooltip-num">
+                                {formatSignedFlow(flow.amount, flow.currency)}
+                              </span>
+                            </p>
+                          </Fragment>
                         ))}
+                        <p className="dperf-tooltip-label">Performance</p>
                         <p>
-                          Performance:{" "}
                           <span className="dperf-tooltip-num">
-                            {formatSignedMoney(day.performance_amount, dayCurrency)}
-                          </span>
-                        </p>
-                        <p>
-                          Performance %:{" "}
-                          <span className="dperf-tooltip-num">
-                            {formatSignedPercent(day.performance_pct)}
+                            {formatSignedMoney(day.performance_amount, dayCurrency)} (
+                            {formatSignedPercent(day.performance_pct)})
                           </span>
                         </p>
                       </div>
