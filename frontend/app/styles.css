@@ -5580,11 +5580,11 @@ button.sub-chip:disabled {
 }
 
 .dperf-tooltip {
-  background: var(--d-ink);
+  background: #d97757;
   border-radius: 10px;
   bottom: calc(100% + 8px);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.2);
-  color: #faf9f5;
+  box-shadow: 0 14px 32px rgba(217, 119, 87, 0.35);
+  color: #ffffff;
   font-size: 12px;
   left: 50%;
   min-width: 188px;
@@ -5599,7 +5599,7 @@ button.sub-chip:disabled {
 }
 
 .dperf-tooltip p {
-  color: #cfccc4;
+  color: rgba(255, 255, 255, 0.9);
   margin: 2px 0;
 }
 
