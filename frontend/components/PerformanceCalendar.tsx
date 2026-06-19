@@ -1,12 +1,16 @@
 "use client";
 
 import type { DecimalValue, PortfolioPerformanceDaily } from "@/lib/api";
-import { formatDisplayDate, formatShortDisplayDate } from "@/lib/format";
+import { formatDisplayDate } from "@/lib/format";
 
 type PerformanceCalendarProps = {
   currency: string | null;
   days: PortfolioPerformanceDaily[];
+  rangeLabel?: string;
 };
+
+const COLUMNS = 10;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function decimalNumber(value: DecimalValue): number | null {
   if (value === null) {
@@ -89,6 +93,12 @@ function dateInputValue(value: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function weekdayShort(value: string): string {
+  const parts = value.split("-").map(Number);
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  return WEEKDAYS[date.getDay()] ?? "";
+}
+
 function recentThirtyDays(): string[] {
   const end = new Date();
   const days: string[] = [];
@@ -102,63 +112,72 @@ function recentThirtyDays(): string[] {
   return days;
 }
 
-export function PerformanceCalendar({ currency, days }: PerformanceCalendarProps) {
+function chunk<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    rows.push(items.slice(index, index + size));
+  }
+  return rows;
+}
+
+export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceCalendarProps) {
   const sortedDays = [...days].sort((a, b) => a.date.localeCompare(b.date));
   const daysByDate = new Map(sortedDays.map((day) => [day.date, day]));
-  const calendarDates = recentThirtyDays();
+  const rows = chunk(recentThirtyDays(), COLUMNS);
 
   return (
-    <article className="performance-card soft-card">
-      <div className="performance-card-header">
-        <div>
-          <p className="performance-title">Performance Calendar</p>
-          <p className="performance-description">Daily performance adjusted for deposits and withdrawals.</p>
-        </div>
-        <span className="performance-range">Last 30 days</span>
-      </div>
+    <article className="dperf-panel">
+      <header className="dperf-head">
+        <h2 className="dperf-title">Daily performance</h2>
+        {rangeLabel ? <span className="dperf-range">{rangeLabel}</span> : null}
+      </header>
 
-      <div className="performance-calendar-grid" aria-label="Daily cash-flow adjusted performance">
-        {calendarDates.map((date) => {
-          const day = daysByDate.get(date) ?? null;
-          const dayCurrency = day?.currency ?? currency;
-          const tone = dayTone(day);
-          const hasPerformance = day !== null && decimalNumber(day.performance_amount) !== null;
-          const tooltipTone = hasPerformance ? tone : "empty";
+      <div className="dperf-grid" aria-label="Daily cash-flow adjusted performance">
+        {rows.map((row) => (
+          <div className="dperf-row" key={row[0]}>
+            <span className="dperf-weekday">{weekdayShort(row[0])}</span>
+            <div className="dperf-cells">
+              {row.map((date) => {
+                const day = daysByDate.get(date) ?? null;
+                const dayCurrency = day?.currency ?? currency;
+                const tone = dayTone(day);
+                const hasPerformance =
+                  day !== null && decimalNumber(day.performance_amount) !== null;
 
-          return (
-            <div className={`performance-day performance-day-${tone}`} key={date} tabIndex={0}>
-              <span className="performance-day-number">{dayNumber(date)}</span>
-              <span className="performance-day-amount">
-                {hasPerformance ? formatSignedMoney(day.performance_amount, dayCurrency) : "--"}
-              </span>
-              <span className="performance-day-percent">
-                {hasPerformance ? formatSignedPercent(day.performance_pct) : "--"}
-              </span>
-              <div className={`performance-tooltip performance-tooltip-${tooltipTone}`} role="tooltip">
-                {hasPerformance ? (
-                  <>
-                    <p className="performance-tooltip-date">{formatDisplayDate(day.date)}</p>
-                    <p>External cash flow: {formatSignedMoney(day.external_cash_flow, dayCurrency)}</p>
-                    <p>Performance: {formatSignedMoney(day.performance_amount, dayCurrency)}</p>
-                    <p>Performance %: {formatSignedPercent(day.performance_pct)}</p>
-                  </>
-                ) : (
-                  <span className="performance-no-data">
-                    <span className="performance-no-data-icon" aria-hidden="true">
-                      ...
-                    </span>
-                    <span className="performance-no-data-label">No data</span>
-                  </span>
-                )}
-              </div>
+                return (
+                  <div className={`dperf-cell dperf-cell-${tone}`} key={date} tabIndex={0}>
+                    <span className="dperf-cell-day">{dayNumber(date)}</span>
+                    {hasPerformance ? (
+                      <>
+                        <span className="dperf-cell-amount">
+                          {formatSignedMoney(day.performance_amount, dayCurrency)}
+                        </span>
+                        <span className="dperf-cell-percent">
+                          {formatSignedPercent(day.performance_pct)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="dperf-cell-empty">—</span>
+                    )}
+
+                    {hasPerformance ? (
+                      <div className={`dperf-tooltip dperf-tooltip-${tone}`} role="tooltip">
+                        <p className="dperf-tooltip-date">{formatDisplayDate(day.date)}</p>
+                        <p>
+                          External cash flow:{" "}
+                          {formatSignedMoney(day.external_cash_flow, dayCurrency)}
+                        </p>
+                        <p>Performance: {formatSignedMoney(day.performance_amount, dayCurrency)}</p>
+                        <p>Performance %: {formatSignedPercent(day.performance_pct)}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
-
-      <p className="performance-footer">
-        {formatShortDisplayDate(calendarDates[0])} - {formatShortDisplayDate(calendarDates.at(-1))}
-      </p>
     </article>
   );
 }

@@ -18,12 +18,12 @@ function hourInTimezone(timeZone: string): number {
 
 function greetingForHour(hour: number): string {
   if (hour >= 5 && hour < 12) {
-    return "Good Morning";
+    return "Good morning";
   }
   if (hour >= 12 && hour < 18) {
-    return "Good Afternoon";
+    return "Good afternoon";
   }
-  return "Good Evening";
+  return "Good evening";
 }
 
 function currentGreeting(): string {
@@ -47,7 +47,7 @@ export function GreetingHeader() {
   return (
     <div className="greeting-header">
       <p className="greeting-title">{greeting}, Thomas</p>
-      <p className="greeting-subtitle">Here is your latest portfolio snapshot.</p>
+      <p className="greeting-subtitle">Here&apos;s what&apos;s happening with your portfolio today.</p>
     </div>
   );
 }
