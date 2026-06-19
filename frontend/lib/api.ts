@@ -30,6 +30,11 @@ export type NavDaily = {
   total: DecimalValue;
 };
 
+export type ExternalCashFlow = {
+  currency: string | null;
+  amount: DecimalValue;
+};
+
 export type PortfolioPerformanceDaily = {
   date: string;
   currency: string | null;
@@ -37,6 +42,7 @@ export type PortfolioPerformanceDaily = {
   previous_date: string | null;
   previous_nav: DecimalValue;
   external_cash_flow: DecimalValue;
+  external_cash_flows?: ExternalCashFlow[];
   performance_amount: DecimalValue;
   performance_pct: DecimalValue;
 };

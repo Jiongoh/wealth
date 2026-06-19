@@ -31,13 +31,23 @@ class NavDailyResponse(BaseModel):
     total: Decimal | None
 
 
+class ExternalCashFlow(BaseModel):
+    currency: str | None
+    amount: Decimal
+
+
 class PortfolioPerformanceDailyResponse(BaseModel):
     date: date
     currency: str | None
     nav: Decimal | None
     previous_date: date | None
     previous_nav: Decimal | None
+    # Base-currency external cash flow used in the performance calculation. Only
+    # flows already denominated in the NAV base currency are included here;
+    # foreign-currency flows are reported separately in `external_cash_flows`
+    # (we do not FX-convert them).
     external_cash_flow: Decimal
+    external_cash_flows: list[ExternalCashFlow]
     performance_amount: Decimal | None
     performance_pct: Decimal | None
 

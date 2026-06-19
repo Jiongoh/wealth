@@ -72,12 +72,18 @@ const perfSeries: Array<[string, number, number]> = [
   ["2026-06-05", -44.8, -0.0536],
   ["2026-06-08", 24.69, 0.031],
   ["2026-06-09", -29.04, -0.0484],
-  ["2026-06-10", -847.26, -1.0829],
+  ["2026-06-10", 8.42, 0.0103],
   ["2026-06-11", 21.53, 0.0237],
   ["2026-06-12", 12.29, 0.0128],
   ["2026-06-15", 30.71, 0.0314],
   ["2026-06-16", -43.26, -0.0429],
 ];
+
+// Native-currency external cash flows by date (no FX conversion). The June 10
+// CNH deposit demonstrates a foreign-currency flow that is not converted.
+const externalCashFlowsByDate: Record<string, { currency: string; amount: number }[]> = {
+  "2026-06-10": [{ currency: "CNH", amount: 1000 }],
+};
 
 const performanceDaily: PortfolioPerformanceDaily[] = perfSeries.map(
   ([date, performance_amount, performance_pct]) => ({
@@ -87,6 +93,7 @@ const performanceDaily: PortfolioPerformanceDaily[] = perfSeries.map(
     previous_date: null,
     previous_nav: null,
     external_cash_flow: 0,
+    external_cash_flows: externalCashFlowsByDate[date] ?? [],
     performance_amount,
     performance_pct,
   }),

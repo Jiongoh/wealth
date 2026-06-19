@@ -21,6 +21,7 @@ from app.schemas.pnl import (
 )
 from app.schemas.portfolio import (
     CurrentPositionResponse,
+    ExternalCashFlow,
     LotAnalysisResponse,
     NavDailyResponse,
     PortfolioPerformanceDailyResponse,
@@ -61,6 +62,7 @@ __all__ = [
     "RealizedPnlDailyResponse",
     "RealizedPnlSummaryResponse",
     "CurrentPositionResponse",
+    "ExternalCashFlow",
     "LotAnalysisResponse",
     "NavDailyResponse",
     "PortfolioPerformanceDailyResponse",

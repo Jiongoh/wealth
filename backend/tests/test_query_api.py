@@ -469,6 +469,69 @@ class QueryApiTest(unittest.TestCase):
         self.assertEqual(Decimal(rows[1]["external_cash_flow"]), Decimal("10.0000000000"))
         self.assertEqual(Decimal(rows[1]["performance_amount"]), Decimal("5.0000000000"))
         self.assertEqual(Decimal(rows[1]["performance_pct"]), Decimal("0.0500000000"))
+        self.assertEqual(
+            rows[1]["external_cash_flows"],
+            [{"currency": "USD", "amount": "10.0000000000"}],
+        )
+
+    def test_portfolio_performance_excludes_foreign_currency_cash_flow(self) -> None:
+        with self.session_factory() as db:
+            first_report = RawFlexReport(
+                query_id="fx-performance-test",
+                xml_path=str(FIXTURE_PATH),
+                xml_sha256="fx-performance-first",
+                downloaded_at=datetime(2026, 2, 1, tzinfo=UTC),
+                status="parsed",
+            )
+            second_report = RawFlexReport(
+                query_id="fx-performance-test",
+                xml_path=str(FIXTURE_PATH),
+                xml_sha256="fx-performance-second",
+                downloaded_at=datetime(2026, 2, 2, tzinfo=UTC),
+                status="parsed",
+            )
+            db.add_all([first_report, second_report])
+            db.flush()
+            db.add_all(
+                [
+                    NavDaily(
+                        report_date=date(2026, 1, 30),
+                        account_id="TEST_ACCOUNT",
+                        currency="USD",
+                        total=Decimal("100"),
+                        raw_flex_report_id=first_report.id,
+                    ),
+                    NavDaily(
+                        report_date=date(2026, 1, 31),
+                        account_id="TEST_ACCOUNT",
+                        currency="USD",
+                        total=Decimal("115"),
+                        raw_flex_report_id=second_report.id,
+                    ),
+                    # A 1000 CNH deposit must NOT be subtracted from a USD NAV.
+                    CashReport(
+                        report_date=date(2026, 1, 31),
+                        account_id="TEST_ACCOUNT",
+                        currency="CNH",
+                        level_of_detail="Currency",
+                        deposit_withdrawals=Decimal("1000"),
+                        raw_flex_report_id=second_report.id,
+                    ),
+                ]
+            )
+            db.commit()
+
+        rows = self.client.get("/api/portfolio/performance/daily").json()
+        day = rows[1]
+        self.assertEqual(day["date"], "2026-01-31")
+        # Base-currency cash flow is zero -> the CNH deposit is excluded from
+        # the performance calculation rather than added as raw USD.
+        self.assertEqual(Decimal(day["external_cash_flow"]), Decimal("0"))
+        self.assertEqual(Decimal(day["performance_amount"]), Decimal("15.0000000000"))
+        self.assertEqual(
+            day["external_cash_flows"],
+            [{"currency": "CNH", "amount": "1000.0000000000"}],
+        )
 
     def test_cash_balance_timeseries_returns_normalized_currency_balances(self) -> None:
         self._ingest_fixture()

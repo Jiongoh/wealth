@@ -47,6 +47,23 @@ function formatSignedMoney(value: DecimalValue, currency: string | null): string
   return formatted;
 }
 
+// External cash flow is shown in its native currency (no FX conversion), so we
+// use a plain "<sign><CODE> <amount>" format (e.g. "+CNH 1,000.00") rather than
+// Intl currency styling, which rejects non-ISO codes like CNH.
+function formatSignedFlow(value: DecimalValue, currency: string | null): string {
+  const number = decimalNumber(value);
+  if (number === null) {
+    return "--";
+  }
+
+  const amount = Math.abs(number).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const sign = number > 0 ? "+" : number < 0 ? "-" : "";
+  return `${sign}${displayCurrency(currency)} ${amount}`;
+}
+
 function formatSignedPercent(value: DecimalValue): string {
   const number = decimalNumber(value);
   if (number === null) {
@@ -186,12 +203,23 @@ export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceC
                     {hasPerformance ? (
                       <div className={`dperf-tooltip dperf-tooltip-${tone}`} role="tooltip">
                         <p className="dperf-tooltip-date">{formatDisplayDate(day.date)}</p>
-                        <p>
-                          External cash flow:{" "}
-                          <span className="dperf-tooltip-num">
-                            {formatSignedMoney(day.external_cash_flow, dayCurrency)}
-                          </span>
-                        </p>
+                        {day.external_cash_flows && day.external_cash_flows.length > 0 ? (
+                          day.external_cash_flows.map((flow, flowIndex) => (
+                            <p key={`${flow.currency ?? "?"}-${flowIndex}`}>
+                              External cash flow:{" "}
+                              <span className="dperf-tooltip-num">
+                                {formatSignedFlow(flow.amount, flow.currency)}
+                              </span>
+                            </p>
+                          ))
+                        ) : (
+                          <p>
+                            External cash flow:{" "}
+                            <span className="dperf-tooltip-num">
+                              {formatSignedFlow(day.external_cash_flow, dayCurrency)}
+                            </span>
+                          </p>
+                        )}
                         <p>
                           Performance:{" "}
                           <span className="dperf-tooltip-num">

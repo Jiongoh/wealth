@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models import CashReport, LotAnalysisDaily, NavDaily, RawFlexReport
 from app.schemas import (
+    ExternalCashFlow,
     NavDailyResponse,
     PortfolioPerformanceDailyResponse,
     PortfolioSummaryResponse,
@@ -150,9 +151,16 @@ def get_daily_performance(
             continue
         nav = _aggregate_nav_daily(report_date, rows)
         current_nav = nav.total
-        external_cash_flow = _external_cash_flow(cash_rows_by_date.get(report_date, []))
+        flows = _external_cash_flows(cash_rows_by_date.get(report_date, []))
+        # NAV is in the account base currency, so only base-currency cash flows
+        # can be subtracted directly. Foreign-currency flows are surfaced in
+        # `external_cash_flows` (native units) without FX conversion.
+        base_cash_flow = sum(
+            (amount for currency, amount in flows if currency == nav.currency),
+            Decimal("0"),
+        )
         performance_amount = (
-            current_nav - previous_nav - external_cash_flow
+            current_nav - previous_nav - base_cash_flow
             if current_nav is not None and previous_nav is not None
             else None
         )
@@ -168,7 +176,11 @@ def get_daily_performance(
                 nav=current_nav,
                 previous_date=previous_date,
                 previous_nav=previous_nav,
-                external_cash_flow=external_cash_flow,
+                external_cash_flow=base_cash_flow,
+                external_cash_flows=[
+                    ExternalCashFlow(currency=currency, amount=amount)
+                    for currency, amount in flows
+                ],
                 performance_amount=performance_amount,
                 performance_pct=performance_pct,
             )
@@ -260,20 +272,32 @@ def _aggregate_nav_daily(report_date: date, rows: list[NavDaily]) -> NavDailyRes
     )
 
 
-def _external_cash_flow(rows: list[CashReport]) -> Decimal:
-    total = Decimal("0")
-    for row in rows:
-        if row.deposit_withdrawals is not None:
-            total += row.deposit_withdrawals
-            continue
+def _row_cash_flow(row: CashReport) -> Decimal:
+    if row.deposit_withdrawals is not None:
+        return row.deposit_withdrawals
 
-        deposits = row.deposits or Decimal("0")
-        withdrawals = row.withdrawals or Decimal("0")
-        # IBKR withdrawal sign can vary by report configuration. Subtracting abs()
-        # prevents both positive and negative withdrawal fields from being counted
-        # as investment performance.
-        total += deposits - abs(withdrawals)
-    return total
+    deposits = row.deposits or Decimal("0")
+    withdrawals = row.withdrawals or Decimal("0")
+    # IBKR withdrawal sign can vary by report configuration. Subtracting abs()
+    # prevents both positive and negative withdrawal fields from being counted
+    # as investment performance.
+    return deposits - abs(withdrawals)
+
+
+def _external_cash_flows(rows: list[CashReport]) -> list[tuple[str | None, Decimal]]:
+    """Net external cash flow per currency (native units, non-zero only).
+
+    Cash reports are denominated per currency; they are intentionally not
+    summed across currencies (the NAV they are compared against is in the
+    account base currency).
+    """
+    totals: dict[str | None, Decimal] = {}
+    for row in rows:
+        flow = _row_cash_flow(row)
+        if flow == 0:
+            continue
+        totals[row.currency] = totals.get(row.currency, Decimal("0")) + flow
+    return [(currency, amount) for currency, amount in totals.items() if amount != 0]
 
 
 def _validate_date_range(start_date: date | None, end_date: date | None) -> None:
