@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { ChartTooltip, displayCurrency, formatPlainNumber } from "@/components/ChartTooltip";
 import { EmptyState } from "@/components/EmptyState";
 import type { NavDaily } from "@/lib/api";
 import { formatShortDisplayDate } from "@/lib/format";
@@ -22,22 +23,6 @@ type ChartPoint = {
   date: string;
   total: number;
 };
-
-function formatMoney(value: number, currency: string | null): string {
-  if (!currency) {
-    return value.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 export function NavHistoryChart({ currency, history }: NavHistoryChartProps) {
   const pointMap = new Map<string, ChartPoint>();
@@ -84,17 +69,15 @@ export function NavHistoryChart({ currency, history }: NavHistoryChartProps) {
             width={58}
           />
           <Tooltip
-            contentStyle={{
-              background: "#faf9f5",
-              border: "1px solid rgba(217, 119, 87, 0.15)",
-              borderRadius: "10px",
-              boxShadow: "0 6px 20px rgba(20, 20, 19, 0.05)",
-              padding: "10px 12px",
-            }}
-            itemStyle={{ color: "#d97757" }}
-            labelStyle={{ color: "#141413", fontWeight: 600, marginBottom: "4px" }}
-            formatter={(value) => [formatMoney(Number(value), currency), "Total NAV"]}
-            labelFormatter={(label) => formatShortDisplayDate(String(label))}
+            content={
+              <ChartTooltip
+                labelFormatter={(label) => formatShortDisplayDate(String(label))}
+                rowFor={(entry) => ({
+                  label: displayCurrency(currency),
+                  value: formatPlainNumber(entry.value),
+                })}
+              />
+            }
           />
           <Area
             activeDot={{ fill: "#d97757", r: 6, stroke: "var(--surface)", strokeWidth: 3 }}

@@ -5614,6 +5614,35 @@ button.sub-chip:disabled {
   color: #d97757;
 }
 
+/* Chart hover tooltip (matches daily-performance tooltip) --------------- */
+.chart-tooltip {
+  background: #faf9f5;
+  border: 1px solid rgba(217, 119, 87, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(20, 20, 19, 0.05);
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
+.chart-tooltip-date {
+  color: #141413;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.chart-tooltip-row {
+  color: #6c6a64;
+  margin: 2px 0;
+}
+
+.chart-tooltip-label {
+  color: #6c6a64;
+}
+
+.chart-tooltip-num {
+  color: #d97757;
+}
+
 .dperf-cell:hover .dperf-tooltip,
 .dperf-cell:focus-visible .dperf-tooltip {
   opacity: 1;
