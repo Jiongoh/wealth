@@ -64,8 +64,8 @@ export function NavHistoryChart({ currency, history }: NavHistoryChartProps) {
         <AreaChart data={points} margin={{ top: 12, right: 14, left: 4, bottom: 0 }}>
           <defs>
             <linearGradient id="navFill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.34} />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.03} />
+              <stop offset="0%" stopColor="#d97757" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="#d97757" stopOpacity={0.03} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="var(--border)" strokeDasharray="4 8" vertical={false} />
@@ -85,24 +85,27 @@ export function NavHistoryChart({ currency, history }: NavHistoryChartProps) {
           />
           <Tooltip
             contentStyle={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "16px",
-              boxShadow: "var(--shadow-card)",
+              background: "#faf9f5",
+              border: "1px solid rgba(217, 119, 87, 0.15)",
+              borderRadius: "10px",
+              boxShadow: "0 6px 20px rgba(20, 20, 19, 0.05)",
+              padding: "10px 12px",
             }}
+            itemStyle={{ color: "#d97757" }}
+            labelStyle={{ color: "#141413", fontWeight: 600, marginBottom: "4px" }}
             formatter={(value) => [formatMoney(Number(value), currency), "Total NAV"]}
             labelFormatter={(label) => formatShortDisplayDate(String(label))}
           />
           <Area
-            activeDot={{ fill: "var(--accent)", r: 6, stroke: "var(--surface)", strokeWidth: 3 }}
+            activeDot={{ fill: "#d97757", r: 6, stroke: "var(--surface)", strokeWidth: 3 }}
             dataKey="total"
             dot={
               points.length === 1
-                ? { fill: "var(--accent)", r: 6, stroke: "var(--surface)", strokeWidth: 3 }
+                ? { fill: "#d97757", r: 6, stroke: "var(--surface)", strokeWidth: 3 }
                 : false
             }
             fill="url(#navFill)"
-            stroke="var(--accent-deep)"
+            stroke="#d97757"
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={3}

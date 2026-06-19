@@ -24,7 +24,7 @@ type ChartPoint = {
   [series: string]: number | string;
 };
 
-const SERIES_COLORS = ["var(--accent-deep)", "var(--positive)", "var(--negative)", "var(--text-muted)"];
+const SERIES_COLORS = ["#d97757", "var(--positive)", "var(--negative)", "var(--text-muted)"];
 
 function decimalNumber(value: DecimalValue): number | null {
   if (value === null) {
@@ -107,11 +107,14 @@ export function RealizedPnlChart({ currency, history }: RealizedPnlChartProps) {
           />
           <Tooltip
             contentStyle={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "16px",
-              boxShadow: "var(--shadow-card)",
+              background: "#faf9f5",
+              border: "1px solid rgba(217, 119, 87, 0.15)",
+              borderRadius: "10px",
+              boxShadow: "0 6px 20px rgba(20, 20, 19, 0.05)",
+              padding: "10px 12px",
             }}
+            itemStyle={{ color: "#d97757" }}
+            labelStyle={{ color: "#141413", fontWeight: 600, marginBottom: "4px" }}
             formatter={(value, name) => {
               const currentSeries = visibleSeries.find((line) => line.label === name);
               return [formatMoney(Number(value), currentSeries?.currency ?? currency), name];
