@@ -623,18 +623,18 @@ export function DashboardView() {
             <h2 className="dash-panel-title">Asset allocation</h2>
           </header>
           <div className="dash-allocation-body">
-            <div className="dash-allocation-info">
-              <ul className="dash-allocation-legend">
-                {allocationSlices.map((slice) => (
-                  <li key={slice.key}>
-                    <span className={`dash-legend-dot dash-allocation-${slice.className}`} aria-hidden="true" />
-                    <span className="dash-legend-label">{slice.label}</span>
-                    <span className="dash-legend-pct">{Math.round(slice.pct)}%</span>
-                  </li>
-                ))}
-              </ul>
+            <div className="dash-allocation-chart">
+              <AllocationDonut slices={allocationSlices} />
             </div>
-            <AllocationDonut slices={allocationSlices} />
+            <ul className="dash-allocation-legend">
+              {allocationSlices.map((slice) => (
+                <li key={slice.key}>
+                  <span className={`dash-legend-dot dash-allocation-${slice.className}`} aria-hidden="true" />
+                  <span className="dash-legend-label">{slice.label}</span>
+                  <span className="dash-legend-pct">{Math.round(slice.pct)}%</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </article>
       </section>
