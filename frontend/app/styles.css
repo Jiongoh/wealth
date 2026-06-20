@@ -5882,20 +5882,6 @@ body:has(.dashboard-page) {
   min-width: 0;
 }
 
-.dash-allocation-bar {
-  background: var(--d-hairline-soft);
-  border-radius: 999px;
-  display: flex;
-  gap: 3px;
-  height: 10px;
-  overflow: hidden;
-}
-
-.dash-allocation-seg {
-  border-radius: 999px;
-  height: 100%;
-}
-
 .dash-allocation-stocks {
   background: var(--d-teal);
 }
@@ -5913,7 +5899,7 @@ body:has(.dashboard-page) {
   flex-wrap: wrap;
   gap: 22px;
   list-style: none;
-  margin: 18px 0 0;
+  margin: 0;
   padding: 0;
 }
 

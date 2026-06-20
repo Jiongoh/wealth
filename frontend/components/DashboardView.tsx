@@ -624,17 +624,6 @@ export function DashboardView() {
           </header>
           <div className="dash-allocation-body">
             <div className="dash-allocation-info">
-              <div className="dash-allocation-bar" aria-hidden="true">
-                {allocationSlices
-                  .filter((slice) => slice.pct > 0)
-                  .map((slice) => (
-                    <span
-                      key={slice.key}
-                      className={`dash-allocation-seg dash-allocation-${slice.className}`}
-                      style={{ width: `${slice.pct}%` }}
-                    />
-                  ))}
-              </div>
               <ul className="dash-allocation-legend">
                 {allocationSlices.map((slice) => (
                   <li key={slice.key}>
