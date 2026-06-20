@@ -239,6 +239,15 @@ function TrendIcon() {
   );
 }
 
+function TargetIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" />
+    </svg>
+  );
+}
+
 function WalletIcon() {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
@@ -565,7 +574,7 @@ export function DashboardView() {
             </p>
           </div>
           <span className="dash-stat-icon">
-            <TrendIcon />
+            <TargetIcon />
           </span>
         </article>
       </section>
