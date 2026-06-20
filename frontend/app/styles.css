@@ -5510,19 +5510,6 @@ body:has(.dashboard-page) {
   gap: 8px;
 }
 
-.dperf-row {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 38px 1fr;
-}
-
-.dperf-weekday {
-  color: var(--d-muted-soft);
-  font-size: 12px;
-  font-weight: 500;
-}
-
 .dperf-cells {
   display: grid;
   gap: 8px;

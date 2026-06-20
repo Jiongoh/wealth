@@ -11,7 +11,6 @@ type PerformanceCalendarProps = {
 };
 
 const COLUMNS = 10;
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function decimalNumber(value: DecimalValue): number | null {
   if (value === null) {
@@ -111,12 +110,6 @@ function dateInputValue(value: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function weekdayShort(value: string): string {
-  const parts = value.split("-").map(Number);
-  const date = new Date(parts[0], parts[1] - 1, parts[2]);
-  return WEEKDAYS[date.getDay()] ?? "";
-}
-
 function recentThirtyDays(): string[] {
   const end = new Date();
   const days: string[] = [];
@@ -175,10 +168,8 @@ export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceC
 
       <div className="dperf-grid" aria-label="Daily cash-flow adjusted performance">
         {rows.map((row) => (
-          <div className="dperf-row" key={row[0]}>
-            <span className="dperf-weekday">{weekdayShort(row[0])}</span>
-            <div className="dperf-cells">
-              {row.map((date) => {
+          <div className="dperf-cells" key={row[0]}>
+            {row.map((date) => {
                 const day = daysByDate.get(date) ?? null;
                 const dayCurrency = day?.currency ?? currency;
                 const tone = dayTone(day);
@@ -225,8 +216,7 @@ export function PerformanceCalendar({ currency, days, rangeLabel }: PerformanceC
                     ) : null}
                   </div>
                 );
-              })}
-            </div>
+            })}
           </div>
         ))}
       </div>
