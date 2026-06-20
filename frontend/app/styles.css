@@ -6031,3 +6031,69 @@ body:has(.dashboard-page) {
 .dashboard-page .dash-stat:hover::after {
   opacity: 1;
 }
+
+/* Dashboard empty-state card (e.g. Realized P/L with no data in range) --- */
+.dashboard-page .empty-state {
+  background: #f4efe6;
+  border: none;
+  border-radius: 16px;
+}
+
+.dashboard-page .empty-state-icon {
+  background: transparent;
+  border-radius: 0;
+  color: transparent;
+  height: 46px;
+  opacity: 0.7;
+  width: 60px;
+}
+
+.dashboard-page .empty-state-icon::before {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 48' fill='none' stroke='%23D97757' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20 Q12 12 20 12 L40 12'/%3E%3Ccircle cx='46' cy='12' r='3.2'/%3E%3Ccircle cx='14' cy='36' r='3.2'/%3E%3Cpath d='M20 36 L44 36 Q52 36 52 28'/%3E%3C/svg%3E") center / contain no-repeat;
+  content: "";
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.dashboard-page .empty-state-title {
+  color: #252523;
+  font-family: var(--serif-display);
+}
+
+.dashboard-page .empty-state-message {
+  color: #6c6a64;
+}
+
+/* Dashboard error-state card (reuses the empty-state card treatment) ----- */
+.dashboard-state .error-state {
+  background: #f5ece9;
+  border: none;
+  border-radius: 16px;
+}
+
+.dashboard-state .error-state .state-icon {
+  background: transparent;
+  border-radius: 0;
+  color: transparent;
+  height: 46px;
+  opacity: 0.7;
+  width: 60px;
+}
+
+.dashboard-state .error-state .state-icon::before {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 48' fill='none' stroke='%23C64545' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20 Q12 12 20 12 L40 12'/%3E%3Ccircle cx='46' cy='12' r='3.2'/%3E%3Ccircle cx='14' cy='36' r='3.2'/%3E%3Cpath d='M20 36 L44 36 Q52 36 52 28'/%3E%3Cpath d='M32 20 L32 26' stroke-width='3.2'/%3E%3Ccircle cx='32' cy='30' r='1.7' fill='%23C64545' stroke='none'/%3E%3C/svg%3E") center / contain no-repeat;
+  content: "";
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.dashboard-state .error-state .state-title {
+  color: #a54d4d;
+  font-family: var(--serif-display);
+}
+
+.dashboard-state .error-state .state-message {
+  color: #6c6a64;
+}
