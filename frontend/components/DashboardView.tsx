@@ -37,8 +37,9 @@ const RANGES: RangeKey[] = ["7D", "1M", "3M", "6M", "YTD", "1Y", "All"];
 type ActivityItem = {
   key: string;
   date: string;
-  label: string;
+  action: string;
   symbol: string | null;
+  detail: string;
   amount: number | null;
   currency: string | null;
 };
@@ -194,8 +195,9 @@ function buildActivity(trades: Trade[], activities: CashActivity[]): ActivityIte
     return {
       key: `trade-${trade.transaction_id ?? index}`,
       date: trade.trade_date ?? trade.report_date ?? "",
-      label: `${isSell ? "Sold" : "Bought"} ${shares.toLocaleString()} shares`,
+      action: isSell ? "Sold" : "Bought",
       symbol: trade.symbol,
+      detail: `${shares.toLocaleString()} shares`,
       amount: decimalNumber(trade.net_cash),
       currency: trade.currency,
     };
@@ -204,8 +206,9 @@ function buildActivity(trades: Trade[], activities: CashActivity[]): ActivityIte
   const fromActivities: ActivityItem[] = activities.map((activity) => ({
     key: `cash-${activity.id}`,
     date: activity.activity_date ?? activity.report_date ?? "",
-    label: activity.description || activity.activity_type || "Activity",
+    action: activity.description || activity.activity_type || "Activity",
     symbol: activity.symbol,
+    detail: "",
     amount: decimalNumber(activity.amount),
     currency: activity.currency,
   }));
@@ -594,8 +597,16 @@ export function DashboardView() {
                   <li className="dash-activity-row" key={item.key}>
                     <span className={`dash-activity-dot dash-activity-dot-${tone}`} aria-hidden="true" />
                     <span className="dash-activity-date">{formatDisplayDate(item.date)}</span>
-                    <span className="dash-activity-label">{item.label}</span>
-                    <span className="dash-activity-symbol">{item.symbol ?? ""}</span>
+                    <span className="dash-activity-label">
+                      {item.action}
+                      {item.symbol ? (
+                        <>
+                          {" "}
+                          <span className="dash-activity-symbol">{item.symbol}</span>
+                        </>
+                      ) : null}
+                      {item.detail ? ` ${item.detail}` : ""}
+                    </span>
                     <span className={`dash-activity-amount dash-activity-amount-${tone}`}>
                       {formatSignedMoney(item.amount, item.currency)}
                     </span>

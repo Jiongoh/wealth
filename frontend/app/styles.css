@@ -5808,7 +5808,7 @@ body:has(.dashboard-page) {
   color: var(--d-body);
   display: grid;
   gap: 14px;
-  grid-template-columns: auto auto 1fr auto auto auto;
+  grid-template-columns: auto auto 1fr auto auto;
   padding: 13px 2px;
 }
 
@@ -5846,7 +5846,7 @@ body:has(.dashboard-page) {
 }
 
 .dash-activity-symbol {
-  color: var(--d-muted);
+  color: #d97757;
   font-size: 13px;
   font-weight: 600;
 }
