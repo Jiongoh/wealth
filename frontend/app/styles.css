@@ -5366,8 +5366,22 @@ button.sub-chip:disabled {
    Dashboard — Claude editorial redesign (scoped to .dashboard-page)
    ========================================================================== */
 
-.page-content:has(.dashboard-page) {
+/* Dashboard floats its cards directly on the page canvas — no wrapping
+   container border/card chrome. */
+html:has(.dashboard-page),
+body:has(.dashboard-page) {
   background: #faf8f5;
+}
+
+.page-content:has(.dashboard-page) {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.page-content:has(.dashboard-page)::before {
+  display: none;
 }
 
 .dashboard-page {
