@@ -29,23 +29,24 @@ type AllocationRow = {
 const POSITIONS_CURRENCY = "USD";
 
 /**
- * Friendly business names for the symbols we hold. The current-positions
- * API does not carry a company name, so we fall back to this map (and to the
- * raw symbol when unknown). Labels mirror the editorial sample.
+ * Full business name for a symbol, looked up in the names map sourced from the
+ * /symbols/{symbol} directory endpoint. Empty when unknown.
  */
-const COMPANY_NAMES: Record<string, string> = {
+function companyName(symbol: string | null | undefined, names: Record<string, string>): string {
+  if (!symbol) {
+    return "";
+  }
+  return names[symbol.toUpperCase()] ?? "";
+}
+
+// Friendly names for the demo symbols, used only in ?demo preview where the
+// backend symbols directory isn't reachable.
+const DEMO_NAMES: Record<string, string> = {
   LITE: "Lithium Americas",
   QQQM: "Nasdaq 100 ETF",
   MU: "Micron Technology",
   IBKR: "Interactive Brokers",
 };
-
-function companyName(symbol: string | null | undefined): string {
-  if (!symbol) {
-    return "";
-  }
-  return COMPANY_NAMES[symbol.toUpperCase()] ?? "";
-}
 
 function decimalNumber(value: DecimalValue): number | null {
   if (value === null) {
@@ -306,6 +307,8 @@ export function PositionsView() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   // Per-symbol notes, sourced from the watchlist (keyed by upper-case symbol).
   const [notes, setNotes] = useState<Record<string, string>>({});
+  // Per-symbol full names, sourced from the /symbols directory endpoint.
+  const [names, setNames] = useState<Record<string, string>>({});
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
@@ -322,6 +325,7 @@ export function PositionsView() {
 
     if (isDemo) {
       setPositions(POSITIONS_DEMO);
+      setNames(DEMO_NAMES);
       setNotes({ LITE: "A majority position in Lithium Americas." });
       // Real latest ibkr_flex_sync finished_at from the server DB, so the local
       // preview reflects an actual timestamp rather than a fabricated one.
@@ -379,6 +383,43 @@ export function PositionsView() {
 
   const currentPositions = useMemo(() => (positions ? uniquePositions(positions) : []), [positions]);
 
+  // Resolve full company names from the symbols directory once positions load.
+  useEffect(() => {
+    if (isDemo) {
+      return;
+    }
+    let active = true;
+    const unique = Array.from(
+      new Set(
+        currentPositions
+          .map((row) => row.symbol?.toUpperCase())
+          .filter((symbol): symbol is string => Boolean(symbol)),
+      ),
+    );
+    if (unique.length === 0) {
+      return;
+    }
+
+    Promise.allSettled(unique.map((symbol) => api.symbolInfo(symbol))).then((results) => {
+      if (!active) return;
+      const resolved: Record<string, string> = {};
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled" && result.value?.name) {
+          // Directory names read "Company Name - Security Type"; keep the
+          // company name and drop the boilerplate security-type suffix.
+          resolved[unique[index]] = result.value.name.split(" - ")[0].trim();
+        }
+      });
+      if (Object.keys(resolved).length > 0) {
+        setNames((prev) => ({ ...prev, ...resolved }));
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [currentPositions, isDemo]);
+
   const totalMarketValue = useMemo(
     () => currentPositions.reduce((sum, row) => sum + (decimalNumber(row.market_value) ?? 0), 0),
     [currentPositions],
@@ -426,10 +467,10 @@ export function PositionsView() {
       .filter((row) => {
         if (!term) return true;
         const symbol = row.symbol?.toUpperCase() ?? "";
-        return symbol.includes(term) || companyName(row.symbol).toUpperCase().includes(term);
+        return symbol.includes(term) || companyName(row.symbol, names).toUpperCase().includes(term);
       })
       .sort((left, right) => comparePositions(left, right, sortKey, sortDirection));
-  }, [currentPositions, search, sortDirection, sortKey]);
+  }, [currentPositions, names, search, sortDirection, sortKey]);
 
   function chooseSort(nextKey: SortKey) {
     if (nextKey === sortKey) {
@@ -671,7 +712,7 @@ export function PositionsView() {
                               ) : (
                                 <span className="pp-symbol-ticker">--</span>
                               )}
-                              <span className="pp-symbol-name">{companyName(row.symbol) || "—"}</span>
+                              <span className="pp-symbol-name">{companyName(row.symbol, names) || "—"}</span>
                             </div>
                           </td>
                           <td className="pp-col-num pp-num">{formatDecimal(row.total_quantity)}</td>
