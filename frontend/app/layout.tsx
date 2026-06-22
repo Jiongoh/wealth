@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
+import { BrandMark } from "@/components/BrandMark";
 import { GreetingHeader } from "@/components/GreetingHeader";
+import { HandDrawnDivider } from "@/components/HandDrawnDivider";
 import { TopbarActions } from "@/components/TopbarActions";
 import { UserProfileCard } from "@/components/UserProfileCard";
 import "./styles.css";
@@ -21,14 +23,17 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <aside className="sidebar">
             <div className="brand">
               <span className="brand-mark" aria-hidden="true">
-                IS
+                <BrandMark />
               </span>
               <div>
                 <p className="brand-title">My Portfolio</p>
-                <p className="brand-subtitle">IBKR sync journal</p>
+                <p className="brand-subtitle">IBKR Sync Journal</p>
               </div>
             </div>
+            <HandDrawnDivider className="brand-divider" />
             <AppNav />
+            <div className="sidebar-spacer" />
+            <HandDrawnDivider className="profile-divider" />
             <UserProfileCard />
           </aside>
           <div className="content-shell">
