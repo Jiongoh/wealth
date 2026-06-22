@@ -1,5 +1,6 @@
 import type {
   CashActivity,
+  CurrentPosition,
   NavDaily,
   PortfolioPerformanceDaily,
   PortfolioSummary,
@@ -215,3 +216,52 @@ export const DASHBOARD_DEMO = {
   trades,
   activities,
 };
+
+// Sample current positions, mirroring the editorial Positions mockup. Used
+// only when the page is opened with `?demo` (e.g. without a running backend).
+export const POSITIONS_DEMO: CurrentPosition[] = [
+  {
+    symbol: "LITE",
+    conid: "DEMO-LITE",
+    total_quantity: 0.406,
+    current_price: 850.0,
+    avg_cost: 916.47,
+    market_value: 345.1,
+    unrealized_pnl: -26.98,
+    unrealized_pnl_pct: -0.0725,
+    weight_pct: 0.5613,
+  },
+  {
+    symbol: "QQQM",
+    conid: "DEMO-QQQM",
+    total_quantity: 0.46,
+    current_price: 304.52,
+    avg_cost: 248.09,
+    market_value: 140.08,
+    unrealized_pnl: 25.96,
+    unrealized_pnl_pct: 0.2275,
+    weight_pct: 0.2278,
+  },
+  {
+    symbol: "MU",
+    conid: "DEMO-MU",
+    total_quantity: 0.111,
+    current_price: 1133.96,
+    avg_cost: 908.67,
+    market_value: 125.87,
+    unrealized_pnl: 25.01,
+    unrealized_pnl_pct: 0.2479,
+    weight_pct: 0.2047,
+  },
+  {
+    symbol: "IBKR",
+    conid: "DEMO-IBKR",
+    total_quantity: 0.0391,
+    current_price: 95.91,
+    avg_cost: 76.47,
+    market_value: 3.75,
+    unrealized_pnl: 0.76,
+    unrealized_pnl_pct: 0.2542,
+    weight_pct: 0.0061,
+  },
+];
