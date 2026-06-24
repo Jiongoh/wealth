@@ -14,15 +14,17 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
-import { LotsView } from "@/components/LotsView";
 import {
   api,
   type CurrentPosition,
   type DecimalValue,
   type MarketCandle,
   type MarketQuote,
+  type PositionLot,
   type SymbolSearchResult,
 } from "@/lib/api";
+import { DETAILS_DEMO } from "@/lib/detailsDemo";
+import { formatDisplayDate } from "@/lib/format";
 
 const QUOTE_REFRESH_MS = 15_000;
 const CANDLE_REFRESH_MS = 30_000;
@@ -135,12 +137,113 @@ function formatCurrency(value: DecimalValue | undefined, currency = "USD"): stri
   }).format(number);
 }
 
-function formatSignedCurrency(value: DecimalValue | undefined): string {
+// US$-prefixed money, matching the editorial Positions/Dashboard surfaces
+// (Intl's "currency" style renders "$" which reads as generic; the brand uses
+// the explicit "US$" form).
+function formatUsd(value: DecimalValue | undefined): string {
   const number = decimalNumber(value);
   if (number === null) {
     return "--";
   }
-  return formatCurrency(number);
+  const formatted = Math.abs(number).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${number < 0 ? "-" : ""}US$${formatted}`;
+}
+
+function formatSignedUsd(value: DecimalValue | undefined): string {
+  const number = decimalNumber(value);
+  if (number === null) {
+    return "--";
+  }
+  const sign = number > 0 ? "+" : number < 0 ? "−" : "";
+  const formatted = Math.abs(number).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${sign}US$${formatted}`;
+}
+
+// `value` is a fraction (e.g. -0.0725 → "−7.25%").
+function formatSignedPctFraction(value: DecimalValue | undefined): string {
+  const number = decimalNumber(value);
+  if (number === null) {
+    return "--";
+  }
+  const sign = number > 0 ? "+" : number < 0 ? "−" : "";
+  return `${sign}${Math.abs(number * 100).toFixed(2)}%`;
+}
+
+// Whole days between an ISO open timestamp and now, for the lot holding period.
+function holdingDays(openIso: string | null): number | null {
+  if (!openIso) {
+    return null;
+  }
+  const opened = new Date(openIso).getTime();
+  if (!Number.isFinite(opened)) {
+    return null;
+  }
+  return Math.max(0, Math.floor((Date.now() - opened) / DAY_MS));
+}
+
+function monthYearLabel(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function moneyTone(value: DecimalValue | undefined): "up" | "down" | "flat" {
+  const number = decimalNumber(value);
+  if (number === null || number === 0) {
+    return "flat";
+  }
+  return number > 0 ? "up" : "down";
+}
+
+// A lot's return as a fraction, preferring price-based math and falling back to
+// pnl ÷ cost basis (mirrors the lots table's own calculation).
+function lotPnlFraction(lot: PositionLot): number | null {
+  const mark = decimalNumber(lot.mark_price);
+  const cost = decimalNumber(lot.cost_basis_price);
+  if (mark !== null && cost !== null && cost !== 0) {
+    return (mark - cost) / cost;
+  }
+  const pnl = decimalNumber(lot.unrealized_pnl);
+  const basis = decimalNumber(lot.cost_basis_money);
+  if (pnl !== null && basis !== null && basis !== 0) {
+    return pnl / Math.abs(basis);
+  }
+  return null;
+}
+
+function lotKey(lot: PositionLot): string {
+  return (
+    lot.originating_transaction_id ??
+    `${lot.open_datetime ?? "?"}:${String(lot.quantity ?? "?")}:${String(lot.cost_basis_price ?? "?")}`
+  );
+}
+
+type TimelineLot = {
+  lot: PositionLot;
+  lotNumber: number;
+};
+
+// Sort lots oldest-first and assign 1-based lot numbers in that order, so the
+// earliest purchase is "Lot 1" regardless of display order.
+function buildTimelineLots(lots: PositionLot[]): TimelineLot[] {
+  return [...lots]
+    .sort((a, b) => {
+      const at = a.open_datetime ? new Date(a.open_datetime).getTime() : 0;
+      const bt = b.open_datetime ? new Date(b.open_datetime).getTime() : 0;
+      return at - bt;
+    })
+    .map((lot, index) => ({ lot, lotNumber: index + 1 }));
 }
 
 function formatFeed(value: string | null | undefined): string {
@@ -148,25 +251,6 @@ function formatFeed(value: string | null | undefined): string {
     return "--";
   }
   return value.toUpperCase();
-}
-
-function formatStatusLabel(value: string | null | undefined): string {
-  if (value === "fallback") {
-    return "Fallback";
-  }
-  if (value === "latest_available") {
-    return "Latest available";
-  }
-  if (value === "realtime") {
-    return "Realtime";
-  }
-  if (value === "delayed") {
-    return "Delayed";
-  }
-  if (value === "stale") {
-    return "Stale";
-  }
-  return safeText(value, "--");
 }
 
 function formatProviderFeed(provider: string | null | undefined, feed: string | null | undefined): string {
@@ -182,22 +266,6 @@ function formatProviderFeed(provider: string | null | undefined, feed: string | 
     return providerLabel;
   }
   return `${providerLabel} ${feedLabel}`;
-}
-
-function formatAge(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
-    return "--";
-  }
-  if (seconds < 60) {
-    return `${Math.max(0, Math.round(seconds))}s ago`;
-  }
-  if (seconds < 3600) {
-    return `${Math.round(seconds / 60)}m ago`;
-  }
-  if (seconds < 86_400) {
-    return `${Math.round(seconds / 3600)}h ago`;
-  }
-  return `${Math.round(seconds / 86_400)}d ago`;
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -246,6 +314,44 @@ function isUsMarketWeekend(now: Date): boolean {
   return false;
 }
 
+// A quote older than this is treated as "feed dark" — covers exchange holidays
+// (and any prolonged outage) where the market-data worker stops producing
+// fresh ticks even on a weekday, so the page shows the closed state.
+const STALE_CLOSED_SECONDS = 30 * 60;
+
+// Logo assets live in /public; keyed by the resolved market-data provider.
+// `height` is per-logo because the artwork aspect ratios differ sharply
+// (Alpaca is a square logomark; Yahoo is a wide wordmark).
+const PROVIDER_LOGOS: Record<string, { src: string; alt: string; height: number }> = {
+  alpaca: { src: "/alpaca-securities-llc-logo-vector.svg", alt: "Alpaca", height: 28},
+  yahoo: { src: "/Yahoo!_Finance_logo.svg", alt: "Yahoo Finance", height: 15 },
+};
+
+// Frontend mirror of backend/app/services/alpaca_feed.py routing: the active
+// provider rotates by ET wall-clock so the "Data provided by" logo matches the
+// feed actually serving quotes. Used as a fallback when the live quote doesn't
+// carry an explicit provider.
+function resolveProviderByTime(now: Date): "alpaca" | "yahoo" {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "numeric",
+      hour12: false,
+    })
+      .formatToParts(now)
+      .find((part) => part.type === "hour")?.value ?? "0",
+  ) % 24;
+  // 20:00–04:00 → Alpaca overnight; 08:00–17:00 → Alpaca IEX; the two gap
+  // windows (04:00–08:00, 17:00–20:00) fall back to Yahoo.
+  if (hour >= 20 || hour < 4) {
+    return "alpaca";
+  }
+  if (hour >= 8 && hour < 17) {
+    return "alpaca";
+  }
+  return "yahoo";
+}
+
 function formatTime(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") {
     return "--";
@@ -258,14 +364,6 @@ function formatTime(value: string | number | null | undefined): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function pnlClass(value: DecimalValue | undefined): string {
-  const number = decimalNumber(value);
-  if (number === null || number === 0) {
-    return "";
-  }
-  return number > 0 ? "pnl-positive" : "pnl-negative";
 }
 
 function safeText(value: unknown, fallback = "--"): string {
@@ -555,11 +653,19 @@ function PriceLineChart({
   feed,
   quote,
   rangeMs,
+  anchored = false,
+  resting = false,
 }: {
   candles: NormalizedMarketCandle[];
   feed: string;
   quote: NormalizedMarketQuote | null;
   rangeMs: number;
+  // When markets are closed the latest candle can be days old; anchor the
+  // x-axis window to that candle (instead of "now") so the last stored session
+  // fills the chart rather than sitting off-screen to the left.
+  anchored?: boolean;
+  // Render in a muted "resting" palette while the market is closed.
+  resting?: boolean;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const chart = useMemo(() => {
@@ -587,7 +693,7 @@ function PriceLineChart({
     // point if it is somehow newer), so sparse history leaves the left side
     // empty instead of stretching a few points across the whole chart.
     const dataMaxTime = points[points.length - 1].time;
-    const maxTime = Math.max(Date.now(), dataMaxTime);
+    const maxTime = anchored ? dataMaxTime : Math.max(Date.now(), dataMaxTime);
     const minTime = maxTime - rangeMs;
     const timeSpread = maxTime - minTime || 1;
     const plotWidth = width - paddingX * 2;
@@ -631,7 +737,7 @@ function PriceLineChart({
       width,
       height,
     };
-  }, [candles, quote, rangeMs]);
+  }, [candles, quote, rangeMs, anchored]);
 
   if (!chart) {
     return (
@@ -656,7 +762,7 @@ function PriceLineChart({
   };
 
   return (
-    <div className="details-price-chart" aria-label="Price area chart">
+    <div className={`details-price-chart${resting ? " is-resting" : ""}`} aria-label="Price area chart">
       <div className="details-price-chart-canvas">
         <svg
           onMouseLeave={() => setHoveredIndex(null)}
@@ -667,9 +773,9 @@ function PriceLineChart({
         >
           <defs>
             <linearGradient id="lite-area-gradient" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#d49a1f" stopOpacity="0.2" />
-              <stop offset="70%" stopColor="#d49a1f" stopOpacity="0.06" />
-              <stop offset="100%" stopColor="#d49a1f" stopOpacity="0" />
+              <stop offset="0%" stopColor="#cc785c" stopOpacity="0.22" />
+              <stop offset="70%" stopColor="#cc785c" stopOpacity="0.07" />
+              <stop offset="100%" stopColor="#cc785c" stopOpacity="0" />
             </linearGradient>
           </defs>
           {chart.yTicks.map((tick) => (
@@ -746,6 +852,49 @@ function PriceLineChart({
   );
 }
 
+// A small decorative sparkline tracing a lot's entry price down/up to the
+// current mark. With no per-lot price history available, the curve is a gentle
+// deterministic interpolation — enough to read direction at a glance.
+function LotSparkline({ startPrice, endPrice }: { startPrice: number | null; endPrice: number | null }) {
+  if (startPrice === null || endPrice === null) {
+    return null;
+  }
+  const width = 220;
+  const height = 64;
+  const padX = 6;
+  const padY = 10;
+  const steps = 28;
+  const min = Math.min(startPrice, endPrice);
+  const max = Math.max(startPrice, endPrice);
+  const span = max - min || Math.max(Math.abs(max) * 0.01, 1);
+  const lo = min - span * 0.3;
+  const hi = max + span * 0.3;
+  const range = hi - lo || 1;
+  const pts: Array<[number, number]> = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const eased = 0.5 - Math.cos(t * Math.PI) / 2; // smoothstep
+    const wobble = Math.sin(i * 1.3) * span * 0.05 * (1 - t);
+    const price = startPrice + (endPrice - startPrice) * eased + wobble;
+    const x = padX + t * (width - padX * 2);
+    const y = padY + (1 - (price - lo) / range) * (height - padY * 2);
+    pts.push([x, y]);
+  }
+  const down = endPrice < startPrice;
+  const line = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  return (
+    <svg className="dp-lot-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline
+        className={down ? "dp-lot-spark-line is-down" : "dp-lot-spark-line is-up"}
+        points={line}
+        fill="none"
+      />
+      <circle className={down ? "dp-lot-spark-dot is-down" : "dp-lot-spark-dot is-up"} cx={last[0]} cy={last[1]} r="3.5" />
+    </svg>
+  );
+}
+
 export function TickerDetailsView({ symbol }: { symbol: string }) {
   const [data, setData] = useState<DetailsData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -755,6 +904,35 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
   });
   const dataRef = useRef<DetailsData | null>(null);
   dataRef.current = data;
+
+  // Mirrors `marketClosed` (computed in render) so the polling loop can read it
+  // without re-subscribing. When the market is closed the feed is dark, so we
+  // stop the periodic refreshes and let the page rest on the last session.
+  const marketClosedRef = useRef(false);
+
+  // `?demo` renders the editorial layout from a baked LITE snapshot so the page
+  // can be previewed locally without a running backend.
+  const [isDemo] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") !== null,
+  );
+
+  // Preview-only overrides for eyeballing the market-data status card without
+  // waiting for the matching wall-clock window: ?market=open|closed forces the
+  // availability state, ?provider=alpaca|yahoo forces the attribution logo.
+  const [previewOverrides] = useState(() => {
+    if (typeof window === "undefined") {
+      return { market: null as string | null, provider: null as string | null };
+    }
+    const params = new URLSearchParams(window.location.search);
+    return { market: params.get("market"), provider: params.get("provider") };
+  });
+
+  // Open tax lots for the symbol, used by the position timeline and the
+  // selected-lot detail. Fetched alongside the market data below.
+  const [lots, setLots] = useState<PositionLot[] | null>(null);
+  // Index into the chronologically-sorted lots for the "Selected lot" panel;
+  // null falls back to the most recent lot.
+  const [selectedLotKey, setSelectedLotKey] = useState<string | null>(null);
 
   // Selected price-chart window. The candle fetch reads the current value via a
   // ref (so the periodic refresh in the main effect picks up changes without
@@ -778,6 +956,12 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
   useEffect(() => {
     let active = true;
     setSymbolInfo(null);
+    if (isDemo) {
+      setSymbolInfo(DETAILS_DEMO.symbolInfo);
+      return () => {
+        active = false;
+      };
+    }
     api
       .symbolInfo(symbol)
       .then((info) => {
@@ -792,14 +976,9 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
     return () => {
       active = false;
     };
-  }, [symbol]);
+  }, [symbol, isDemo]);
   const symbolName = symbolInfo?.name?.trim() || null;
   const symbolExchange = symbolInfo?.exchange?.trim() || null;
-  const symbolSubtitle = symbolName
-    ? symbolExchange
-      ? `${symbolName} · ${symbolExchange}`
-      : symbolName
-    : `Live market data, lots, and position detail for ${symbol}.`;
   const backTarget = origin === "positions"
     ? { href: "/positions", label: "Back to Positions" }
     : { href: "/watchlist", label: "Back to Watchlist" };
@@ -811,11 +990,39 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
     // the old symbol never flash through.
     setData(null);
     setError(null);
+    setLots(null);
+    setSelectedLotKey(null);
+
+    if (isDemo) {
+      setData({
+        candles: normalizeCandles(DETAILS_DEMO.candles, symbol),
+        position: { ...DETAILS_DEMO.position, symbol },
+        quote: normalizeQuote(DETAILS_DEMO.quote, symbol),
+      });
+      setLots(DETAILS_DEMO.lots);
+      setRefreshState({ lastRefreshedAt: new Date().toISOString(), warning: null });
+      return () => {
+        active = false;
+      };
+    }
+
     // Monotonic counters drop out-of-order responses when a slow request
     // resolves after a newer one.
     let quoteSeq = 0;
     let candleSeq = 0;
     let loadingAll = false;
+    let quoteInterval: number | undefined;
+    let candleInterval: number | undefined;
+    const stopPolling = () => {
+      if (quoteInterval !== undefined) {
+        window.clearInterval(quoteInterval);
+        quoteInterval = undefined;
+      }
+      if (candleInterval !== undefined) {
+        window.clearInterval(candleInterval);
+        candleInterval = undefined;
+      }
+    };
 
     const markRefreshSuccess = () => {
       setRefreshState({
@@ -876,6 +1083,12 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
         void loadAll();
         return;
       }
+      // Market closed (weekend/holiday): the feed is dark, so stop polling and
+      // let the page rest on the last loaded session.
+      if (marketClosedRef.current) {
+        stopPolling();
+        return;
+      }
       const request = ++quoteSeq;
       try {
         const quote = await api.marketQuote(symbol);
@@ -896,6 +1109,10 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
       if (dataRef.current === null) {
         return;
       }
+      if (marketClosedRef.current) {
+        stopPolling();
+        return;
+      }
       const request = ++candleSeq;
       try {
         const candles = await api.marketCandles(symbol, { timeframe: "1m", range: chartRangeRef.current });
@@ -912,21 +1129,34 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
     };
 
     void loadAll();
-    const quoteInterval = window.setInterval(refreshQuote, QUOTE_REFRESH_MS);
-    const candleInterval = window.setInterval(refreshCandles, CANDLE_REFRESH_MS);
+    // Open lots drive the position timeline + selected-lot panel. A failure
+    // here must not block the market data, so swallow the error.
+    api
+      .lots(symbol)
+      .then((rows) => {
+        if (active) {
+          setLots(Array.isArray(rows) ? rows : []);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setLots([]);
+        }
+      });
+    quoteInterval = window.setInterval(refreshQuote, QUOTE_REFRESH_MS);
+    candleInterval = window.setInterval(refreshCandles, CANDLE_REFRESH_MS);
 
     return () => {
       active = false;
-      window.clearInterval(quoteInterval);
-      window.clearInterval(candleInterval);
+      stopPolling();
     };
-  }, [symbol]);
+  }, [symbol, isDemo]);
 
   // Range switch: refetch candles for the new window without tearing down the
   // page. The initial load is owned by the main effect (which skips here while
   // data is still null), so this only fires on subsequent range changes.
   useEffect(() => {
-    if (dataRef.current === null) {
+    if (dataRef.current === null || isDemo) {
       return;
     }
     let active = true;
@@ -943,223 +1173,400 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
     return () => {
       active = false;
     };
-  }, [chartRange, symbol]);
+  }, [chartRange, symbol, isDemo]);
 
   const quote = data?.quote ?? null;
   const candles = data?.candles ?? [];
   const position = data?.position ?? null;
   const latestPrice = quote?.last_price ?? quote?.last_bar_close ?? null;
   const previousClose = quote?.previous_close ?? null;
+  const changeAmount =
+    latestPrice !== null && previousClose !== null ? latestPrice - previousClose : null;
   const changePct =
     latestPrice !== null && previousClose !== null && previousClose !== 0
       ? ((latestPrice - previousClose) / previousClose) * 100
       : null;
+  const changeTone = changePct === null || changePct === 0 ? "flat" : changePct > 0 ? "up" : "down";
   const latestCandle = candles.at(-1);
   const liveQuoteTimestamp = quote?.source_timestamp ?? quote?.updated_at ?? null;
   const marketFeed = formatFeed(quote?.feed ?? latestCandle?.feed);
-  const providerFeed = formatProviderFeed(quote?.provider, quote?.feed ?? latestCandle?.feed);
-  const activeProviderFeed = formatProviderFeed(quote?.active_provider, quote?.active_feed);
-  const quoteStatus = formatStatusLabel(quote?.status_label);
-  // The US feed is dark over the weekend; show a closed state rather than a
-  // stale Friday price dressed up as live data.
-  const marketClosed = isUsMarketWeekend(new Date());
-  // Yahoo never provides bid/ask, so while the Yahoo fallback route is active
-  // any bid/ask we have is a leftover Alpaca value; hide it instead.
-  const yahooFallbackActive = (quote?.provider ?? "").toLowerCase() === "yahoo";
-  const hasBidAsk = !yahooFallbackActive
-    && quote?.bid_price !== null && quote?.bid_price !== undefined
-    && quote?.ask_price !== null && quote?.ask_price !== undefined;
-  const showBidAsk = hasBidAsk && !marketClosed;
-  const bidAskSource = formatProviderFeed(quote?.bid_ask_provider ?? quote?.provider, quote?.bid_ask_feed ?? quote?.feed);
-  const bidAskAge = quote?.bid_ask_stale_seconds ?? null;
-  const bidAskIsOld = bidAskAge !== null && bidAskAge > 120;
+  // The feed is dark over the weekend and on exchange holidays. Weekends are
+  // calendar-based; holidays (no public US-holiday list in the app) are inferred
+  // from a quote that has stopped updating. Either way we still show whatever
+  // last session we have rather than a blank panel.
+  const now = new Date();
+  const isWeekend = isUsMarketWeekend(now);
+  const dataStale =
+    quote === null ||
+    quote.is_stale === true ||
+    (quote.stale_seconds !== null && quote.stale_seconds !== undefined && quote.stale_seconds > STALE_CLOSED_SECONDS);
+  const marketClosed =
+    previewOverrides.market === "closed"
+      ? true
+      : previewOverrides.market === "open"
+        ? false
+        : isWeekend || dataStale;
+  marketClosedRef.current = marketClosed;
+  const closedReason = isWeekend
+    ? "Quotes resume Sunday 8:00 PM ET."
+    : "Quotes resume when the exchange reopens.";
+  // Which provider is serving live data — prefer the quote's own resolution,
+  // fall back to the time-based mirror of the backend routing.
+  const activeProviderName = (
+    previewOverrides.provider ?? quote?.active_provider ?? quote?.provider ?? resolveProviderByTime(now)
+  ).toLowerCase();
+  const providerLogo = PROVIDER_LOGOS[activeProviderName] ?? PROVIDER_LOGOS.alpaca;
+
+  // Company name + security type parsed from the directory record
+  // ("Lumentum Holdings Inc. - Common Stock" → name + "Common Stock").
+  const companyName = symbolName ? symbolName.split(" - ")[0]?.trim() || null : null;
+  const securityType = symbolName
+    ? symbolName.split(" - ")[1]?.trim() || (symbolInfo?.is_etf ? "ETF" : null)
+    : null;
+  const listingLine = [securityType, symbolExchange].filter(Boolean).join(" · ");
+
+  // Lots sorted oldest-first with 1-based lot numbers for the timeline.
+  const timelineLots = useMemo(() => buildTimelineLots(lots ?? []), [lots]);
+  const taxLotCount = timelineLots.length;
+  const heldSince = timelineLots.length > 0 ? monthYearLabel(timelineLots[0].lot.open_datetime) : null;
+
+  // The selected lot for the detail panel; defaults to the most recent lot.
+  const selectedEntry = useMemo(() => {
+    if (timelineLots.length === 0) {
+      return null;
+    }
+    const byKey = selectedLotKey
+      ? timelineLots.find((entry) => lotKey(entry.lot) === selectedLotKey)
+      : null;
+    return byKey ?? timelineLots[timelineLots.length - 1];
+  }, [timelineLots, selectedLotKey]);
+
+  const exportLots = () => {
+    if (!lots || lots.length === 0) {
+      return;
+    }
+    const header = ["symbol", "quantity", "cost_basis_price", "cost_basis_money", "open_datetime", "unrealized_pnl"];
+    const rows = lots.map((lot) =>
+      [lot.symbol ?? symbol, lot.quantity, lot.cost_basis_price, lot.cost_basis_money, lot.open_datetime, lot.unrealized_pnl]
+        .map((cell) => `"${String(cell ?? "")}"`)
+        .join(","),
+    );
+    const csv = [header.join(","), ...rows].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${symbol}-lots.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   return (
-    <>
-      <div className="page-header details-page-header">
-        <div>
-          <p className="eyebrow">Ticker details</p>
-          <h1>{symbol}</h1>
-          <p className="page-description">{symbolSubtitle}</p>
-        </div>
-        <Link className="details-back-button" href={backTarget.href}>
-          <span className="details-back-button-icon" aria-hidden="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </span>
+    <div className="details-page">
+      <div className="dp-topbar">
+        <Link className="dp-back" href={backTarget.href}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
           {backTarget.label}
         </Link>
       </div>
 
       {error ? (
-        <section className="dashboard-state">
+        <section className="dp-state">
           <ErrorState message={error} title={`Unable to load ${symbol} details`} />
         </section>
       ) : !data ? (
-        <section className="dashboard-state">
-          <LoadingState message={`Loading ${symbol} market data and lots...`} />
+        <section className="dp-state">
+          <LoadingState message={`Loading ${symbol} market data and lots…`} />
         </section>
       ) : (
         <>
-          <section className={`details-hero panel${marketClosed ? " is-closed" : ""}`}>
-            {marketClosed ? (
-              <div className="details-hero-closed-banner" role="status">
-                <span className="details-closed-dot" aria-hidden="true" />
-                <div>
-                  <strong>U.S. markets are closed for the weekend</strong>
-                  <p>Showing the last close. Live quotes and charting resume when trading reopens (Sunday 8:00 PM ET).</p>
-                </div>
-              </div>
-            ) : null}
-            <div className="details-hero-main">
-              <span className="details-symbol">{marketClosed ? "Last Close" : "Current Price"}</span>
-              <div className="details-price-row">
-                <strong>{quote ? formatCurrency(latestPrice) : "Latest data unavailable"}</strong>
-                {changePct !== null ? (
-                  <span
-                    className={`details-change ${changePct > 0 ? "is-up" : changePct < 0 ? "is-down" : "is-flat"}`}
-                    title="Change vs previous session close"
-                  >
-                    {`${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`}
-                  </span>
-                ) : null}
-              </div>
-              <div className="details-bid-ask" aria-label="Bid and ask">
-                <span className="details-bid-ask-pair">
-                  <span>Bid</span>
-                  <strong>{showBidAsk ? formatCurrency(quote?.bid_price ?? null) : "--"}</strong>
-                </span>
-                <span className="details-bid-ask-divider">/</span>
-                <span className="details-bid-ask-pair">
-                  <span>Ask</span>
-                  <strong>{showBidAsk ? formatCurrency(quote?.ask_price ?? null) : "--"}</strong>
-                </span>
-                {marketClosed ? (
-                  <span className="details-bid-ask-age">Unavailable while markets are closed</span>
-                ) : yahooFallbackActive ? (
-                  <span className="details-bid-ask-age">Unavailable during Yahoo fallback</span>
-                ) : hasBidAsk ? (
-                  <span className={`details-bid-ask-age${bidAskIsOld ? " is-old" : ""}`}>
-                    {bidAskSource}
-                    {bidAskAge !== null ? ` · ${formatAge(bidAskAge)}` : ""}
-                  </span>
-                ) : null}
-              </div>
+          <header className="dp-hero">
+            <div className="dp-hero-id">
+              <p className="dp-eyebrow">Ticker Details</p>
+              <h1 className="dp-symbol">{symbol}</h1>
+              {companyName ? <p className="dp-company">{companyName}</p> : null}
+              {listingLine ? <p className="dp-listing">{listingLine}</p> : null}
+              {heldSince ? (
+                <p className="dp-note">
+                  Held since {heldSince}.
+                  <span className="dp-note-underline" aria-hidden="true" />
+                </p>
+              ) : null}
             </div>
-            <div className="details-hero-meta" aria-label="Market data status">
+
+            <div className="dp-price-block">
+              <p className="dp-price-label">{marketClosed ? "Last Close" : "Last Price"}</p>
+              <p className="dp-price">{latestPrice !== null ? formatUsd(latestPrice) : "Unavailable"}</p>
+              {changePct !== null ? (
+                <p className={`dp-change dp-change-${changeTone}`} title="Change vs previous session close">
+                  {`${changePct > 0 ? "+" : changePct < 0 ? "−" : ""}${Math.abs(changePct).toFixed(2)}%`}
+                  {changeAmount !== null ? (
+                    <span className="dp-change-amt">({formatSignedUsd(changeAmount)})</span>
+                  ) : null}
+                </p>
+              ) : null}
               {marketClosed ? (
+                <div className="dp-status dp-status-closed" role="status">
+                  <p className="dp-status-headline">
+                    U.S. markets are closed
+                    <span className="dp-status-badge dp-status-badge-closed">
+                      <span className="dp-status-moon" aria-hidden="true">☾</span>
+                      Closed
+                    </span>
+                  </p>
+                  <p className="dp-status-detail">{closedReason}</p>
+                </div>
+              ) : (
+                <div className="dp-status dp-status-open" role="status">
+                  <p className="dp-status-headline">
+                    U.S. markets are available
+                    <span className="dp-status-badge dp-status-badge-open">
+                      <span className="dp-status-dot" aria-hidden="true" />
+                      Live
+                    </span>
+                  </p>
+                  <p className="dp-status-attr">
+                    Data provided by
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      className="dp-provider-logo"
+                      src={providerLogo.src}
+                      alt={providerLogo.alt}
+                      style={{ height: providerLogo.height }}
+                    />
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {position ? (
+              <aside className="dp-snapshot">
+                <p className="dp-snapshot-title">Position Snapshot</p>
+                <dl className="dp-snapshot-list">
+                  <div><dt>Shares</dt><dd>{formatNumber(position.total_quantity, 4)}</dd></div>
+                  <div><dt>Avg cost</dt><dd>{formatUsd(position.avg_cost)}</dd></div>
+                  <div><dt>Market value</dt><dd>{formatUsd(position.market_value)}</dd></div>
+                  <div>
+                    <dt>Unrealized P&amp;L</dt>
+                    <dd className={`dp-pnl-${moneyTone(position.unrealized_pnl)}`}>
+                      {formatSignedUsd(position.unrealized_pnl)} ({formatSignedPctFraction(position.unrealized_pnl_pct)})
+                    </dd>
+                  </div>
+                  <div><dt>Tax lots</dt><dd>{taxLotCount || "--"}</dd></div>
+                </dl>
+              </aside>
+            ) : (
+              <aside className="dp-snapshot dp-snapshot-empty">
+                <p className="dp-snapshot-title">Position Snapshot</p>
+                <p className="dp-snapshot-none">Not currently held.</p>
+              </aside>
+            )}
+          </header>
+
+          <section className="dp-chart-panel">
+            <div className="dp-panel-head">
+              <div>
+                <p className="dp-panel-eyebrow">Price Journey</p>
+                <p className="dp-panel-sub">
+                  {marketClosed
+                    ? "Markets resting — showing the last available session."
+                    : chartRange === "1h"
+                      ? "Price action over the last hour, including the latest live quote."
+                      : "Price history over the selected window; gaps show where history isn't available yet."}
+                </p>
+              </div>
+              <div className="dp-range" role="group" aria-label="Chart range">
+                {CHART_RANGES.map((entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    className={`dp-range-btn${chartRange === entry.key ? " is-active" : ""}`}
+                    aria-pressed={chartRange === entry.key}
+                    onClick={() => setChartRange(entry.key)}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {!marketClosed && refreshState.warning ? (
+              <p className="dp-warning">Refresh issue: {refreshState.warning}</p>
+            ) : null}
+            <MarketDataBoundary candlesCount={candles.length} fallbackCandles={candles} quoteExists={quote !== null}>
+              {candles.length === 0 && !quote ? (
+                <div className="dp-panel-state">
+                  <EmptyState
+                    message={`No quote or candle data is available for ${symbol} yet.`}
+                    title="Latest data unavailable"
+                  />
+                </div>
+              ) : (
+                <PriceLineChart
+                  candles={candles}
+                  feed={marketFeed}
+                  quote={quote}
+                  rangeMs={chartRangeMs(chartRange)}
+                  anchored={marketClosed}
+                  resting={marketClosed}
+                />
+              )}
+            </MarketDataBoundary>
+          </section>
+
+          <section className="dp-stats">
+            <article className="dp-stat">
+              <span className="dp-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <ellipse cx="16" cy="16" rx="9" ry="7" />
+                  <ellipse cx="24" cy="24" rx="9" ry="7" />
+                </svg>
+              </span>
+              <span className="dp-stat-value">{position ? formatNumber(position.total_quantity, 4) : "--"}</span>
+              <span className="dp-stat-label">Shares</span>
+            </article>
+            <article className="dp-stat">
+              <span className="dp-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 7H11v10l13 13 10-10-13-13z" />
+                  <circle cx="15.5" cy="11.5" r="1.6" />
+                </svg>
+              </span>
+              <span className="dp-stat-value">{position ? formatUsd(position.avg_cost) : "--"}</span>
+              <span className="dp-stat-label">Avg cost basis</span>
+            </article>
+            <article className="dp-stat">
+              <span className="dp-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 13l9 9 6-6 11 11" />
+                  <path d="M33 19v8h-8" />
+                </svg>
+              </span>
+              <span className={`dp-stat-value dp-pnl-${position ? moneyTone(position.unrealized_pnl) : "flat"}`}>
+                {position ? formatSignedUsd(position.unrealized_pnl) : "--"}
+              </span>
+              <span className="dp-stat-label">
+                Unrealized P&amp;L{position ? ` (${formatSignedPctFraction(position.unrealized_pnl_pct)})` : ""}
+              </span>
+            </article>
+            <article className="dp-stat">
+              <span className="dp-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="10" y="8" width="16" height="20" rx="2" />
+                  <path d="M15 28v4h16V12h-4" />
+                  <path d="M14 14h8M14 18h8" />
+                </svg>
+              </span>
+              <span className="dp-stat-value">{taxLotCount || "--"}</span>
+              <span className="dp-stat-label">Tax lots</span>
+            </article>
+          </section>
+
+          <section className="dp-detail-grid" id="dp-detail">
+            <article className="dp-timeline-panel">
+              <p className="dp-panel-eyebrow">Position Timeline</p>
+              <p className="dp-panel-sub">A timeline of your trades in {symbol}.</p>
+              {timelineLots.length === 0 ? (
+                <div className="dp-panel-state">
+                  <EmptyState message={`No open lots for ${symbol}.`} />
+                </div>
+              ) : (
+                <ol className="dp-timeline">
+                  <li className="dp-timeline-row dp-timeline-now">
+                    <span className="dp-timeline-marker"><span className="dp-timeline-dot is-now" /></span>
+                    <span className="dp-timeline-when">Today</span>
+                    <span className="dp-timeline-what">Current price {formatUsd(latestPrice)}</span>
+                  </li>
+                  {[...timelineLots].reverse().map((entry) => {
+                    const selected = selectedEntry !== null && lotKey(entry.lot) === lotKey(selectedEntry.lot);
+                    return (
+                      <li key={lotKey(entry.lot)} className={`dp-timeline-row${selected ? " is-selected" : ""}`}>
+                        <button className="dp-timeline-hit" type="button" onClick={() => setSelectedLotKey(lotKey(entry.lot))}>
+                          <span className="dp-timeline-marker"><span className="dp-timeline-dot" /></span>
+                          <span className="dp-timeline-when">{formatDisplayDate(entry.lot.open_datetime)}</span>
+                          <span className="dp-timeline-what">
+                            {entry.lotNumber === 1 ? "Bought" : "Added"} {formatNumber(entry.lot.quantity, 4)} shares @ {formatUsd(entry.lot.cost_basis_price)}
+                          </span>
+                          <span className="dp-lot-tag">Lot {entry.lotNumber}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </article>
+
+            <article className="dp-lot-panel">
+              {selectedEntry ? (
                 <>
-                  <span>Status: Markets closed</span>
-                  <span>U.S. equities · Weekend</span>
-                  <span>Last close: {formatDateTime(liveQuoteTimestamp)}</span>
+                  <div className="dp-lot-head">
+                    <p className="dp-panel-eyebrow">Selected Lot</p>
+                    <span className="dp-lot-tag is-strong">Lot {selectedEntry.lotNumber}</span>
+                  </div>
+                  <p className="dp-lot-date">{formatDisplayDate(selectedEntry.lot.open_datetime)}</p>
+                  <p className="dp-lot-line">
+                    {selectedEntry.lotNumber === 1 ? "Bought" : "Added"} {formatNumber(selectedEntry.lot.quantity, 4)} shares @ {formatUsd(selectedEntry.lot.cost_basis_price)}
+                  </p>
+                  <dl className="dp-lot-stats">
+                    <div><dt>Cost</dt><dd>{formatUsd(selectedEntry.lot.cost_basis_money)}</dd></div>
+                    <div><dt>Current value</dt><dd>{formatUsd(selectedEntry.lot.position_value)}</dd></div>
+                    <div>
+                      <dt>Unrealized P&amp;L</dt>
+                      <dd className={`dp-pnl-${moneyTone(selectedEntry.lot.unrealized_pnl)}`}>
+                        {formatSignedUsd(selectedEntry.lot.unrealized_pnl)} ({formatSignedPctFraction(lotPnlFraction(selectedEntry.lot))})
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Holding period</dt>
+                      <dd>{(() => { const days = holdingDays(selectedEntry.lot.open_datetime); return days === null ? "--" : `${days} ${days === 1 ? "day" : "days"}`; })()}</dd>
+                    </div>
+                  </dl>
+                  <div className="dp-lot-spark-wrap">
+                    <span className="dp-lot-spark-start">{formatNumber(selectedEntry.lot.cost_basis_price)}</span>
+                    <LotSparkline
+                      startPrice={decimalNumber(selectedEntry.lot.cost_basis_price)}
+                      endPrice={decimalNumber(selectedEntry.lot.mark_price)}
+                    />
+                    <span className="dp-lot-spark-end">{formatNumber(selectedEntry.lot.mark_price)}</span>
+                  </div>
                 </>
               ) : (
-                <>
-                  <span>
-                    Status: {quoteStatus}
-                    {quote?.is_stale && quote.stale_seconds !== null ? ` (${formatAge(quote.stale_seconds)})` : ""}
-                  </span>
-                  <span>Source: {providerFeed}{providerFeed !== activeProviderFeed && activeProviderFeed !== "--" ? ` (active: ${activeProviderFeed})` : ""}</span>
-                  <span>Session: {safeText(quote?.market_session, "--")}</span>
-                  <span>Price time: {formatDateTime(liveQuoteTimestamp)}</span>
-                </>
+                <div className="dp-panel-state">
+                  <EmptyState message="Select a lot from the timeline to see its detail." />
+                </div>
               )}
+            </article>
+          </section>
+
+          <section className="dp-cta">
+            <span className="dp-cta-art" aria-hidden="true">
+              <svg viewBox="0 0 96 84" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M40 74V44" />
+                <path d="M40 52C40 44 33 38 24 38c0 8 7 14 16 14z" />
+                <path d="M40 48c0-9 7-16 17-16 0 9-8 16-17 16z" />
+                <path d="M40 60c0-6 5-11 12-11 0 6-5 11-12 11z" />
+                <path d="M30 74h20l-2 8H32z" />
+              </svg>
+            </span>
+            <div className="dp-cta-copy">
+              <p className="dp-cta-title">What would you like to do?</p>
+              <p className="dp-cta-sub">Manage your position or export your data.</p>
+            </div>
+            <div className="dp-cta-actions">
+              <button className="dp-btn dp-btn-primary" type="button" onClick={scrollToTop}>
+                Review Position <span aria-hidden="true">→</span>
+              </button>
+              <Link className="dp-btn" href="/trades">Add Shares</Link>
+              <Link className="dp-btn" href="/trades">Sell Shares</Link>
+              <button className="dp-btn" type="button" onClick={exportLots}>Export Lots</button>
             </div>
           </section>
 
-          <section className="details-grid">
-            <article className="panel details-market-panel">
-              <MarketDataBoundary candlesCount={candles.length} fallbackCandles={candles} quoteExists={quote !== null}>
-                <div className="panel-header">
-                  <div>
-                    <h2>Price Chart</h2>
-                    <p>
-                      {marketClosed
-                        ? "Live charting resumes when U.S. markets reopen."
-                        : chartRange === "1h"
-                          ? "Price action over the last hour, including the latest live quote."
-                          : `Price history over the selected window; gaps show where history isn't available yet.`}
-                    </p>
-                  </div>
-                  <div className="details-chart-range" role="group" aria-label="Chart range">
-                    {CHART_RANGES.map((entry) => (
-                      <button
-                        key={entry.key}
-                        type="button"
-                        className={`details-chart-range-button${chartRange === entry.key ? " is-active" : ""}`}
-                        aria-pressed={chartRange === entry.key}
-                        onClick={() => setChartRange(entry.key)}
-                      >
-                        {entry.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {!marketClosed && refreshState.warning ? (
-                  <p className="details-refresh-warning">Refresh issue: {refreshState.warning}</p>
-                ) : null}
-                {marketClosed ? (
-                  <div className="details-panel-state">
-                    <EmptyState
-                      message="Live charting is paused while U.S. markets are closed for the weekend. Intraday data resumes when trading reopens (Sunday 8:00 PM ET)."
-                      title="Markets closed"
-                    />
-                  </div>
-                ) : candles.length === 0 && !quote ? (
-                  <div className="details-panel-state">
-                    <EmptyState
-                      message={`No quote or candle data is available for ${symbol} yet.`}
-                      title="Latest data unavailable"
-                    />
-                  </div>
-                ) : (
-                  <PriceLineChart candles={candles} feed={marketFeed} quote={quote} rangeMs={chartRangeMs(chartRange)} />
-                )}
-              </MarketDataBoundary>
-            </article>
-
-            <article className="panel details-position-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Position Summary</h2>
-                  <p>Latest current-position snapshot for {symbol}.</p>
-                </div>
-              </div>
-              {position ? (
-                <div className="details-position-list">
-                  <div>
-                    <span>Quantity</span>
-                    <strong>{formatNumber(position.total_quantity, 4)}</strong>
-                  </div>
-                  <div>
-                    <span>Avg cost</span>
-                    <strong>{formatCurrency(position.avg_cost)}</strong>
-                  </div>
-                  <div>
-                    <span>Market value</span>
-                    <strong>{formatCurrency(position.market_value)}</strong>
-                  </div>
-                  <div>
-                    <span>Unrealized P&L</span>
-                    <strong className={pnlClass(position.unrealized_pnl)}>
-                      {formatSignedCurrency(position.unrealized_pnl)}
-                    </strong>
-                  </div>
-                </div>
-              ) : (
-                <div className="details-panel-state">
-                  <EmptyState message="No current position." />
-                </div>
-              )}
-            </article>
-          </section>
-
-          <section className="details-lots-section">
-            <LotsView symbol={symbol} />
-          </section>
+          <p className="dp-footnote">Quotes are delayed during market hours. Night session data is indicative.</p>
         </>
       )}
-    </>
+    </div>
   );
 }

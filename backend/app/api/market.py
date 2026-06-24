@@ -149,16 +149,38 @@ def get_market_candles(
     if not normalized_symbol:
         return []
 
-    start_at = utc_now() - _range_delta(range_value)
-    rows = list(
-        db.scalars(
-            select(MarketCandle)
+    delta = _range_delta(range_value)
+    base_query = (
+        select(MarketCandle)
+        .where(MarketCandle.symbol == normalized_symbol)
+        .where(MarketCandle.timeframe == timeframe)
+    )
+
+    def _window(start_at: datetime) -> list[MarketCandle]:
+        return list(
+            db.scalars(
+                base_query.where(MarketCandle.timestamp >= start_at).order_by(
+                    MarketCandle.timestamp.asc(), MarketCandle.provider.asc(), MarketCandle.feed.asc()
+                )
+            ).all()
+        )
+
+    rows = _window(utc_now() - delta)
+    if not rows:
+        # The live window is empty because the upstream feed is dark — markets
+        # are closed for the weekend or an exchange holiday. Fall back to the
+        # most recent stored window (one ``range`` ending at the latest candle)
+        # so the chart shows the last session from the database rather than a
+        # blank panel.
+        latest = db.scalar(
+            select(MarketCandle.timestamp)
             .where(MarketCandle.symbol == normalized_symbol)
             .where(MarketCandle.timeframe == timeframe)
-            .where(MarketCandle.timestamp >= start_at)
-            .order_by(MarketCandle.timestamp.asc(), MarketCandle.provider.asc(), MarketCandle.feed.asc())
-        ).all()
-    )
+            .order_by(MarketCandle.timestamp.desc())
+            .limit(1)
+        )
+        if latest is not None:
+            rows = _window(latest - delta)
     return _downsample_candles(_dedupe_candles(rows))
 
 
