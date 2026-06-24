@@ -513,6 +513,36 @@ class MarketDataApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_market_candles_falls_back_to_last_session_when_window_empty(self) -> None:
+        # Markets closed (weekend/holiday): the only stored candles are days old,
+        # so a fresh "last 1h" window is empty. The endpoint should fall back to
+        # the most recent stored window instead of returning nothing.
+        stale = utc_now() - timedelta(days=3)
+        with self.session_factory() as db:
+            for offset in range(3):
+                db.add(
+                    MarketCandle(
+                        symbol="LITE",
+                        provider="alpaca",
+                        feed="overnight",
+                        timeframe="1m",
+                        timestamp=stale + timedelta(minutes=offset),
+                        open=Decimal("80.00"),
+                        high=Decimal("80.20"),
+                        low=Decimal("79.90"),
+                        close=Decimal("80.10"),
+                        volume=Decimal("100"),
+                    )
+                )
+            db.commit()
+
+        response = self.client.get("/api/market/candles/LITE?timeframe=1m&range=1h")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(Decimal(rows[-1]["close"]), Decimal("80.10"))
+
     def test_batch_quotes_selects_active_provider_per_symbol(self) -> None:
         now = utc_now()
         with self.session_factory() as db:
