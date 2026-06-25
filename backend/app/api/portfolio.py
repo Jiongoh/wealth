@@ -145,33 +145,32 @@ def get_daily_performance(
     response: list[PortfolioPerformanceDailyResponse] = []
     previous_date: date | None = None
     previous_nav: Decimal | None = None
-    previous_stock: Decimal | None = None
     for report_date in sorted(nav_rows_by_date):
         rows = nav_rows_by_date[report_date]
         if not rows:
             continue
         nav = _aggregate_nav_daily(report_date, rows)
         current_nav = nav.total
-        current_stock = nav.stock
         flows = _external_cash_flows(cash_rows_by_date.get(report_date, []))
-        # External cash flow (deposits/withdrawals) must not count as performance.
-        # Daily performance is the change in stock (market) value alone; cash and
-        # cash flows are excluded entirely. Flows are still surfaced for display
-        # in native currency (no FX conversion) via `external_cash_flows`.
+        # Daily performance is the change in NAV with external cash flows removed.
+        # Buying/selling holdings is NAV-neutral, so trades correctly do not count
+        # as performance; only deposits/withdrawals are subtracted out. We can only
+        # subtract base-currency flows, so a day with a foreign-currency flow we
+        # can't convert reports no performance (rather than a corrupted value);
+        # the flow itself is still shown natively via `external_cash_flows`.
         base_cash_flow = sum(
             (amount for currency, amount in flows if currency == nav.currency),
             Decimal("0"),
         )
-        performance_amount = (
-            current_stock - previous_stock
-            if current_stock is not None and previous_stock is not None
-            else None
-        )
-        performance_pct = (
-            performance_amount / previous_stock
-            if performance_amount is not None and previous_stock is not None and previous_stock > 0
-            else None
-        )
+        has_unconvertible_flow = any(currency != nav.currency for currency, _ in flows)
+        if current_nav is not None and previous_nav is not None and not has_unconvertible_flow:
+            performance_amount = current_nav - previous_nav - base_cash_flow
+            performance_pct = (
+                performance_amount / previous_nav if previous_nav > 0 else None
+            )
+        else:
+            performance_amount = None
+            performance_pct = None
         response.append(
             PortfolioPerformanceDailyResponse(
                 date=report_date,
@@ -191,7 +190,6 @@ def get_daily_performance(
         if current_nav is not None:
             previous_date = report_date
             previous_nav = current_nav
-            previous_stock = current_stock
 
     return response
 
