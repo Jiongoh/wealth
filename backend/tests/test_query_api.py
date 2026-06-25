@@ -409,7 +409,7 @@ class QueryApiTest(unittest.TestCase):
         self.assertEqual(len(cash_balances["items"]), 1)
         self.assertEqual(cash_balances["currencies"], ["USD"])
 
-    def test_portfolio_performance_tracks_stock_value_change_only(self) -> None:
+    def test_portfolio_performance_excludes_cash_flows_not_trades(self) -> None:
         with self.session_factory() as db:
             first_report = RawFlexReport(
                 query_id="performance-test",
@@ -433,18 +433,19 @@ class QueryApiTest(unittest.TestCase):
                         report_date=date(2026, 1, 30),
                         account_id="TEST_ACCOUNT",
                         currency="USD",
-                        stock=Decimal("100"),
-                        total=Decimal("120"),
+                        stock=Decimal("40"),
+                        total=Decimal("100"),
                         raw_flex_report_id=first_report.id,
                     ),
-                    # Stock rose 100 -> 110 (a 10 gain). Cash/total also grew via a
-                    # deposit, which must NOT affect performance.
+                    # NAV rose 100 -> 115 but 10 of that was a deposit, so the real
+                    # performance is 5. A stock purchase (cash -> stock) is
+                    # NAV-neutral and so does not affect performance either.
                     NavDaily(
                         report_date=date(2026, 1, 31),
                         account_id="TEST_ACCOUNT",
                         currency="USD",
-                        stock=Decimal("110"),
-                        total=Decimal("145"),
+                        stock=Decimal("90"),
+                        total=Decimal("115"),
                         raw_flex_report_id=second_report.id,
                     ),
                     CashReport(
@@ -452,7 +453,7 @@ class QueryApiTest(unittest.TestCase):
                         account_id="TEST_ACCOUNT",
                         currency="USD",
                         level_of_detail="SUMMARY",
-                        deposit_withdrawals=Decimal("15"),
+                        deposit_withdrawals=Decimal("10"),
                         raw_flex_report_id=second_report.id,
                     ),
                 ]
@@ -466,13 +467,13 @@ class QueryApiTest(unittest.TestCase):
         self.assertEqual(rows[0]["date"], "2026-01-30")
         self.assertIsNone(rows[0]["performance_amount"])
         self.assertEqual(rows[1]["date"], "2026-01-31")
-        # Performance reflects the stock value change (110 - 100), not the
-        # total/NAV change (which includes the deposit).
-        self.assertEqual(Decimal(rows[1]["performance_amount"]), Decimal("10.0000000000"))
-        self.assertEqual(Decimal(rows[1]["performance_pct"]), Decimal("0.1000000000"))
+        # NAV change (115 - 100 = 15) minus the 10 deposit = 5; the stock value
+        # jump (40 -> 90) from buying stock is NAV-neutral and is not counted.
+        self.assertEqual(Decimal(rows[1]["performance_amount"]), Decimal("5.0000000000"))
+        self.assertEqual(Decimal(rows[1]["performance_pct"]), Decimal("0.0500000000"))
         self.assertEqual(
             rows[1]["external_cash_flows"],
-            [{"currency": "USD", "amount": "15.0000000000"}],
+            [{"currency": "USD", "amount": "10.0000000000"}],
         )
 
     def test_portfolio_performance_reports_foreign_currency_cash_flow(self) -> None:
@@ -511,8 +512,9 @@ class QueryApiTest(unittest.TestCase):
                         total=Decimal("1105"),
                         raw_flex_report_id=second_report.id,
                     ),
-                    # A 1000 CNH deposit is reported natively and never affects
-                    # performance (which tracks stock value only).
+                    # A 1000 CNH deposit can't be converted to the USD base, so the
+                    # day reports no performance (instead of a corrupted value); the
+                    # flow is still surfaced natively.
                     CashReport(
                         report_date=date(2026, 1, 31),
                         account_id="TEST_ACCOUNT",
@@ -529,7 +531,8 @@ class QueryApiTest(unittest.TestCase):
         day = rows[1]
         self.assertEqual(day["date"], "2026-01-31")
         self.assertEqual(Decimal(day["external_cash_flow"]), Decimal("0"))
-        self.assertEqual(Decimal(day["performance_amount"]), Decimal("5.0000000000"))
+        self.assertIsNone(day["performance_amount"])
+        self.assertIsNone(day["performance_pct"])
         self.assertEqual(
             day["external_cash_flows"],
             [{"currency": "CNH", "amount": "1000.0000000000"}],

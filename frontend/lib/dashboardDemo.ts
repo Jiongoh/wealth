@@ -87,17 +87,23 @@ const externalCashFlowsByDate: Record<string, { currency: string; amount: number
 };
 
 const performanceDaily: PortfolioPerformanceDaily[] = perfSeries.map(
-  ([date, performance_amount, performance_pct]) => ({
-    date,
-    currency: CURRENCY,
-    nav: null,
-    previous_date: null,
-    previous_nav: null,
-    external_cash_flow: 0,
-    external_cash_flows: externalCashFlowsByDate[date] ?? [],
-    performance_amount,
-    performance_pct,
-  }),
+  ([date, performance_amount, performance_pct]) => {
+    const flows = externalCashFlowsByDate[date] ?? [];
+    // A day with a non-base-currency flow can't be converted, so performance is
+    // reported as unavailable (matches the backend).
+    const hasForeignFlow = flows.some((flow) => flow.currency !== CURRENCY);
+    return {
+      date,
+      currency: CURRENCY,
+      nav: null,
+      previous_date: null,
+      previous_nav: null,
+      external_cash_flow: 0,
+      external_cash_flows: flows,
+      performance_amount: hasForeignFlow ? null : performance_amount,
+      performance_pct: hasForeignFlow ? null : performance_pct,
+    };
+  },
 );
 
 const realizedSummary: RealizedPnlSummary = {
