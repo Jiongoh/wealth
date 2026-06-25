@@ -617,18 +617,20 @@ function nicePriceStep(rawStep: number): number {
   return 10 * power;
 }
 
-function priceTickValues(min: number, max: number, targetCount = 4): number[] {
+function priceTickValues(min: number, max: number, count = 5): number[] {
   const span = max - min;
   if (!Number.isFinite(span) || span <= 0) {
     return [];
   }
-  const step = nicePriceStep(span / targetCount);
-  const first = Math.ceil(min / step) * step;
-  const ticks: number[] = [];
-  for (let value = first; value <= max + step * 1e-6; value += step) {
-    ticks.push(Number(value.toFixed(6)));
+  // Evenly spaced ticks across the visible range, rounded to integers. A fixed
+  // count keeps the axis readable; "nice" rounded steps would collapse to just
+  // 2 ticks on the tight price ranges these charts usually show.
+  const values: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    values.push(Math.round(min + (span * i) / (count - 1)));
   }
-  return ticks;
+  // Dedupe in case rounding collapses neighbours on a very tight range.
+  return Array.from(new Set(values));
 }
 
 function timeTickValues(minTime: number, maxTime: number, targetCount = 5): number[] {
@@ -669,17 +671,34 @@ function PriceLineChart({
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const chart = useMemo(() => {
-    const points = mergeMarketChartPoints(candles, quote);
+    const allPoints = mergeMarketChartPoints(candles, quote);
 
-    if (points.length < 2) {
+    if (allPoints.length < 2) {
       return null;
     }
 
     const width = 720;
     const height = 280;
-    const paddingX = 14;
+    // Small left/right inset for the plot. Kept tight so the line starts close
+    // to the y-axis tick labels (the gap between ticks and the line is this
+    // inset plus the label offset, not the panel padding).
+    const paddingX = 6;
     const paddingTop = 18;
     const paddingBottom = 14;
+    // The x-axis spans the full selected window ending at "now" (or the latest
+    // point if it is somehow newer / anchored when markets are closed), so
+    // sparse history leaves the left side empty instead of stretching a few
+    // points across the whole chart.
+    const dataMaxTime = allPoints[allPoints.length - 1].time;
+    const maxTime = anchored ? dataMaxTime : Math.max(Date.now(), dataMaxTime);
+    const minTime = maxTime - rangeMs;
+    // Drop points outside the visible window. Otherwise a point just older than
+    // the window renders left of the plot: the line gets clipped there but the
+    // hover marker still snaps to it, showing a disconnected dot over the
+    // y-axis. Fall back to all points only if the window is too sparse to draw.
+    const windowPoints = allPoints.filter((point) => point.time >= minTime && point.time <= maxTime);
+    const points = windowPoints.length >= 2 ? windowPoints : allPoints;
+
     const rawMinPrice = Math.min(...points.map((point) => point.price));
     const rawMaxPrice = Math.max(...points.map((point) => point.price));
     const rawSpread = rawMaxPrice - rawMinPrice;
@@ -689,12 +708,6 @@ function PriceLineChart({
     const minPrice = centerPrice - visibleSpread / 2 - visibleSpread * 0.08;
     const maxPrice = centerPrice + visibleSpread / 2 + visibleSpread * 0.08;
     const priceSpread = maxPrice - minPrice || 1;
-    // The x-axis spans the full selected window ending at "now" (or the latest
-    // point if it is somehow newer), so sparse history leaves the left side
-    // empty instead of stretching a few points across the whole chart.
-    const dataMaxTime = points[points.length - 1].time;
-    const maxTime = anchored ? dataMaxTime : Math.max(Date.now(), dataMaxTime);
-    const minTime = maxTime - rangeMs;
     const timeSpread = maxTime - minTime || 1;
     const plotWidth = width - paddingX * 2;
     const plotHeight = height - paddingTop - paddingBottom;
@@ -777,6 +790,16 @@ function PriceLineChart({
               <stop offset="70%" stopColor="#cc785c" stopOpacity="0.07" />
               <stop offset="100%" stopColor="#cc785c" stopOpacity="0" />
             </linearGradient>
+            {/* Confine the line/area to the plot rectangle so points that fall
+                just outside the window never render over the y-axis labels. */}
+            <clipPath id="lite-plot-clip">
+              <rect
+                x={chart.plotLeft}
+                y={0}
+                width={chart.plotRight - chart.plotLeft}
+                height={chart.height}
+              />
+            </clipPath>
           </defs>
           {chart.yTicks.map((tick) => (
             <line
@@ -788,18 +811,8 @@ function PriceLineChart({
               y2={tick.y}
             />
           ))}
-          {chart.xTicks.map((tick) => (
-            <line
-              key={`x-${tick.time}`}
-              className="details-chart-grid-line"
-              x1={tick.x}
-              x2={tick.x}
-              y1={chart.plotTop}
-              y2={chart.plotBottom}
-            />
-          ))}
-          <path className="details-chart-area" d={chart.area} />
-          <polyline className="details-chart-line" points={chart.line} />
+          <path className="details-chart-area" d={chart.area} clipPath="url(#lite-plot-clip)" />
+          <polyline className="details-chart-line" points={chart.line} clipPath="url(#lite-plot-clip)" />
           <circle
             className="details-chart-latest-marker"
             cx={chart.points[chart.points.length - 1].x}
@@ -822,7 +835,7 @@ function PriceLineChart({
         <div className="details-chart-y-labels" aria-hidden="true">
           {chart.yTicks.map((tick) => (
             <span key={`y-label-${tick.value}`} style={{ top: `${tick.yPercent}%` }}>
-              {formatNumber(tick.value)}
+              {formatNumber(tick.value, 0)}
             </span>
           ))}
         </div>
@@ -840,6 +853,13 @@ function PriceLineChart({
             <span>{activePoint.source}</span>
           </div>
         ) : null}
+        <div
+          className={`details-chart-latest-tag${resting ? " is-resting" : ""}`}
+          style={{ top: `${(chart.points[chart.points.length - 1].y / chart.height) * 100}%` }}
+          aria-hidden="true"
+        >
+          {formatNumber(chart.points[chart.points.length - 1].price, 2)}
+        </div>
       </div>
       <div className="details-chart-x-labels" aria-hidden="true">
         {chart.xTicks.map((tick) => (
@@ -1368,16 +1388,7 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
 
           <section className="dp-chart-panel">
             <div className="dp-panel-head">
-              <div>
-                <p className="dp-panel-eyebrow">Price Journey</p>
-                <p className="dp-panel-sub">
-                  {marketClosed
-                    ? "Markets resting — showing the last available session."
-                    : chartRange === "1h"
-                      ? "Price action over the last hour, including the latest live quote."
-                      : "Price history over the selected window; gaps show where history isn't available yet."}
-                </p>
-              </div>
+              <p className="dp-panel-eyebrow">Price Journey</p>
               <div className="dp-range" role="group" aria-label="Chart range">
                 {CHART_RANGES.map((entry) => (
                   <button
