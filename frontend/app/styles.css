@@ -824,8 +824,10 @@ h1 {
 
 .details-price-chart-canvas,
 .details-chart-x-labels {
-  /* Left gutter that hosts the Y-axis tick labels outside the plot. */
-  margin-left: 52px;
+  /* Left gutter hosts the Y-axis tick labels; right gutter hosts the latest
+     price callout, both outside the plot. */
+  margin-left: 28px;
+  margin-right: 52px;
 }
 
 .details-price-chart-canvas {
@@ -923,9 +925,47 @@ h1 {
   font-size: 11px;
   font-weight: 700;
   position: absolute;
-  right: calc(100% + 10px);
+  right: calc(100% + 3px);
   transform: translateY(-50%);
   white-space: nowrap;
+}
+
+/* Latest-price callout — a coral tag in the right gutter pointing back to the
+   last plotted point. */
+.details-chart-latest-tag {
+  position: absolute;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
+  background: #d97757;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.details-chart-latest-tag::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-right: 4px solid #d97757;
+}
+
+/* Grey it while the market is resting, matching the muted chart line. */
+.details-chart-latest-tag.is-resting {
+  background: var(--dp-muted-soft);
+}
+
+.details-chart-latest-tag.is-resting::before {
+  border-right-color: var(--dp-muted-soft);
 }
 
 .details-chart-x-labels {
@@ -7181,11 +7221,11 @@ body:has(.dashboard-page) {
 /* Range tabs */
 .dp-range {
   display: inline-flex;
-  gap: 2px;
-  padding: 3px;
+  gap: 4px;
+  padding: 0;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--dp-hairline);
-  background: var(--dp-canvas);
+  border: none;
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -7207,18 +7247,37 @@ body:has(.dashboard-page) {
 }
 
 .dp-range-btn.is-active {
-  color: #fff;
-  background: var(--dp-coral);
+  color: #d97757;
+  background: #f9ead7;
+}
+
+/* Price Journey panel — flat #FAF8F5 background, larger title, and the range
+   filter stacked left under the title. */
+.dp-chart-panel {
+  background: #faf8f5;
+  /* top | right | bottom | left — left padding is the border↔y-tick gap */
+  padding: 24px 18px 24px 24px;
+}
+
+.dp-chart-panel .dp-panel-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.dp-chart-panel .dp-panel-eyebrow {
+  font-size: 16px;
+  letter-spacing: 0.08em;
 }
 
 /* Chart overrides — recolor the shared PriceLineChart to coral on canvas. */
 .details-page .details-price-chart {
-  background: var(--dp-canvas);
-  border: 1px solid var(--dp-hairline);
-  border-radius: var(--radius-md);
+  background: #faf8f5;
+  border: none;
+  border-radius: 0;
   box-shadow: none;
   margin: 0;
-  padding: 18px 16px 14px;
+  padding: 18px 0 14px;
   min-height: 300px;
 }
 
