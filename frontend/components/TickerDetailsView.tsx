@@ -1450,8 +1450,10 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
                   <ellipse cx="24" cy="24" rx="9" ry="7" />
                 </svg>
               </span>
-              <span className="dp-stat-value">{position ? formatNumber(position.total_quantity, 4) : "--"}</span>
-              <span className="dp-stat-label">Shares</span>
+              <div className="dp-stat-body">
+                <span className="dp-stat-value">{position ? formatNumber(position.total_quantity, 4) : "--"}</span>
+                <span className="dp-stat-label">Shares</span>
+              </div>
             </article>
             <article className="dp-stat">
               <span className="dp-stat-icon" aria-hidden="true">
@@ -1460,8 +1462,10 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
                   <circle cx="15.5" cy="11.5" r="1.6" />
                 </svg>
               </span>
-              <span className="dp-stat-value">{position ? formatUsd(position.avg_cost) : "--"}</span>
-              <span className="dp-stat-label">Avg cost basis</span>
+              <div className="dp-stat-body">
+                <span className="dp-stat-value">{position ? formatUsd(position.avg_cost) : "--"}</span>
+                <span className="dp-stat-label">Avg cost basis</span>
+              </div>
             </article>
             <article className="dp-stat">
               <span className="dp-stat-icon" aria-hidden="true">
@@ -1470,12 +1474,14 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
                   <path d="M33 19v8h-8" />
                 </svg>
               </span>
-              <span className={`dp-stat-value dp-pnl-${position ? moneyTone(position.unrealized_pnl) : "flat"}`}>
-                {position ? formatSignedUsd(position.unrealized_pnl) : "--"}
-              </span>
-              <span className="dp-stat-label">
-                Unrealized P&amp;L{position ? ` (${formatSignedPctFraction(position.unrealized_pnl_pct)})` : ""}
-              </span>
+              <div className="dp-stat-body">
+                <span className={`dp-stat-value dp-pnl-${position ? moneyTone(position.unrealized_pnl) : "flat"}`}>
+                  {position ? formatSignedUsd(position.unrealized_pnl) : "--"}
+                </span>
+                <span className="dp-stat-label">
+                  Unrealized P&amp;L{position ? ` (${formatSignedPctFraction(position.unrealized_pnl_pct)})` : ""}
+                </span>
+              </div>
             </article>
             <article className="dp-stat">
               <span className="dp-stat-icon" aria-hidden="true">
@@ -1485,8 +1491,10 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
                   <path d="M14 14h8M14 18h8" />
                 </svg>
               </span>
-              <span className="dp-stat-value">{taxLotCount || "--"}</span>
-              <span className="dp-stat-label">Tax lots</span>
+              <div className="dp-stat-body">
+                <span className="dp-stat-value">{taxLotCount || "--"}</span>
+                <span className="dp-stat-label">Tax lots</span>
+              </div>
             </article>
           </section>
 
