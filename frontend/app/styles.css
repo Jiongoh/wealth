@@ -7670,6 +7670,67 @@ body:has(.dashboard-page) {
   text-align: center;
 }
 
+/* ── Card hover: gradient border + slight lift ────────────────────────
+   The gradient sits on a masked ::after ring so it follows each card's
+   rounded corners; it fades in on hover while the card floats up. */
+.dp-snapshot,
+.dp-status,
+.dp-chart-panel,
+.dp-stat,
+.dp-timeline-panel,
+.dp-lot-panel,
+.dp-cta {
+  position: relative;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.dp-snapshot::after,
+.dp-status::after,
+.dp-chart-panel::after,
+.dp-stat::after,
+.dp-timeline-panel::after,
+.dp-lot-panel::after,
+.dp-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(135deg, #efe9de 0%, #d97757 70%, #e6a85c 100%);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.dp-snapshot:hover,
+.dp-status:hover,
+.dp-chart-panel:hover,
+.dp-stat:hover,
+.dp-timeline-panel:hover,
+.dp-lot-panel:hover,
+.dp-cta:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px rgba(79, 61, 34, 0.1);
+}
+
+.dp-snapshot:hover::after,
+.dp-status:hover::after,
+.dp-chart-panel:hover::after,
+.dp-stat:hover::after,
+.dp-timeline-panel:hover::after,
+.dp-lot-panel:hover::after,
+.dp-cta:hover::after {
+  opacity: 1;
+}
+
 /* ── Responsive ───────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .dp-hero {
