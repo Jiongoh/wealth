@@ -7333,39 +7333,61 @@ body:has(.dashboard-page) {
 }
 
 .dp-stat {
-  background: var(--dp-cream);
+  background: #faf8f5;
   border: 1px solid var(--dp-hairline);
   border-radius: var(--radius-md);
-  padding: 22px;
+  padding: 16px 18px;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
 }
 
+/* Icon takes the left third of the card, enlarged; text fills the right two
+   thirds. */
 .dp-stat-icon {
-  color: var(--dp-coral);
-  width: 34px;
-  height: 34px;
-  margin-bottom: 6px;
+  color: #1a1a1a;
+  flex: 0 0 33%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .dp-stat-icon svg {
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-width: 50px;
+}
+
+.dp-stat-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .dp-stat-value {
   font-family: var(--serif-display);
-  font-size: clamp(24px, 2.4vw, 30px);
+  font-size: clamp(22px, 2.2vw, 28px);
   font-weight: 400;
   letter-spacing: -0.01em;
-  color: var(--dp-ink);
+  color: #1a1a1a;
   font-variant-numeric: tabular-nums;
+}
+
+/* Keep the P&L value's red/green even though the default value colour is ink. */
+.dp-stat-value.dp-pnl-up {
+  color: var(--dp-success);
+}
+
+.dp-stat-value.dp-pnl-down {
+  color: var(--dp-error);
 }
 
 .dp-stat-label {
   font-size: 13px;
-  color: var(--dp-muted);
+  color: #d97757;
 }
 
 /* ── Detail grid ──────────────────────────────────────────────────── */
