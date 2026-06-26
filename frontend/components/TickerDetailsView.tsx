@@ -854,6 +854,11 @@ function PriceLineChart({
           </div>
         ) : null}
         <div
+          className={`details-chart-latest-connector${resting ? " is-resting" : ""}`}
+          style={{ top: `${(chart.points[chart.points.length - 1].y / chart.height) * 100}%` }}
+          aria-hidden="true"
+        />
+        <div
           className={`details-chart-latest-tag${resting ? " is-resting" : ""}`}
           style={{ top: `${(chart.points[chart.points.length - 1].y / chart.height) * 100}%` }}
           aria-hidden="true"
