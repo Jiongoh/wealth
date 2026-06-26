@@ -934,8 +934,7 @@ h1 {
    plotted point by a dashed coral connector. */
 .details-chart-latest-connector {
   position: absolute;
-  left: calc(100% - 6px);
-  width: 26px;
+  /* left + width are set inline from the latest point's position. */
   height: 0;
   border-top: 1.5px dashed #d97757;
   transform: translateY(-50%);

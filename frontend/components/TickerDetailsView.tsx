@@ -764,6 +764,12 @@ function PriceLineChart({
   }
 
   const activePoint = hoveredIndex === null ? null : chart.points[hoveredIndex] ?? null;
+  // The latest point can sit anywhere in the plot (when its candle is older
+  // than "now"), so the callout connector runs horizontally from the point's
+  // own x out to the tag in the right gutter — not just from the right edge.
+  const lastPoint = chart.points[chart.points.length - 1];
+  const lastXPercent = (lastPoint.x / chart.width) * 100;
+  const lastYPercent = (lastPoint.y / chart.height) * 100;
   const handleMouseMove = (event: MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * chart.width;
@@ -855,15 +861,19 @@ function PriceLineChart({
         ) : null}
         <div
           className={`details-chart-latest-connector${resting ? " is-resting" : ""}`}
-          style={{ top: `${(chart.points[chart.points.length - 1].y / chart.height) * 100}%` }}
+          style={{
+            top: `${lastYPercent}%`,
+            left: `${lastXPercent}%`,
+            width: `calc(${(100 - lastXPercent).toFixed(3)}% + 20px)`,
+          }}
           aria-hidden="true"
         />
         <div
           className={`details-chart-latest-tag${resting ? " is-resting" : ""}`}
-          style={{ top: `${(chart.points[chart.points.length - 1].y / chart.height) * 100}%` }}
+          style={{ top: `${lastYPercent}%` }}
           aria-hidden="true"
         >
-          {formatNumber(chart.points[chart.points.length - 1].price, 2)}
+          {formatNumber(lastPoint.price, 2)}
         </div>
       </div>
       <div className="details-chart-x-labels" aria-hidden="true">
