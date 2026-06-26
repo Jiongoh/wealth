@@ -827,7 +827,7 @@ h1 {
   /* Left gutter hosts the Y-axis tick labels; right gutter hosts the latest
      price callout, both outside the plot. */
   margin-left: 28px;
-  margin-right: 52px;
+  margin-right: 58px;
 }
 
 .details-price-chart-canvas {
@@ -930,11 +930,21 @@ h1 {
   white-space: nowrap;
 }
 
-/* Latest-price callout — a coral tag in the right gutter pointing back to the
-   last plotted point. */
+/* Latest-price callout — a coral tag in the right gutter, joined to the last
+   plotted point by a dashed coral connector. */
+.details-chart-latest-connector {
+  position: absolute;
+  left: calc(100% - 6px);
+  width: 26px;
+  height: 0;
+  border-top: 1.5px dashed #d97757;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .details-chart-latest-tag {
   position: absolute;
-  left: calc(100% + 8px);
+  left: calc(100% + 20px);
   transform: translateY(-50%);
   background: #d97757;
   color: #fff;
@@ -948,24 +958,13 @@ h1 {
   pointer-events: none;
 }
 
-.details-chart-latest-tag::before {
-  content: "";
-  position: absolute;
-  left: -4px;
-  top: 50%;
-  transform: translateY(-50%);
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-right: 4px solid #d97757;
-}
-
-/* Grey it while the market is resting, matching the muted chart line. */
+/* Grey both while the market is resting, matching the muted chart line. */
 .details-chart-latest-tag.is-resting {
   background: var(--dp-muted-soft);
 }
 
-.details-chart-latest-tag.is-resting::before {
-  border-right-color: var(--dp-muted-soft);
+.details-chart-latest-connector.is-resting {
+  border-top-color: var(--dp-muted-soft);
 }
 
 .details-chart-x-labels {
