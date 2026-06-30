@@ -332,7 +332,7 @@ export function DashboardView() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [navRange, setNavRange] = useState<RangeKey>("1M");
-  const [pnlRange, setPnlRange] = useState<RangeKey>("1M");
+  const [pnlRange, setPnlRange] = useState<RangeKey>("All");
 
   useEffect(() => {
     let active = true;
@@ -348,14 +348,12 @@ export function DashboardView() {
       };
     }
 
-    const yearRange = { start_date: rangeStartValue("1Y") ?? undefined };
-
     Promise.all([
       api.portfolioSummary(),
       api.navHistory(),
       api.portfolioPerformanceDaily(recentThirtyDayRange()),
       api.realizedPnlSummary(),
-      api.realizedPnlDaily(yearRange),
+      api.realizedPnlDaily(),
       api.trades({ limit: 8 }).catch(() => null),
       api.cashActivities(recentThirtyDayRange()).catch(() => null),
     ])
