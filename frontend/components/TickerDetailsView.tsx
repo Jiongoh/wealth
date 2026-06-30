@@ -1276,27 +1276,6 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
     return byKey ?? timelineLots[timelineLots.length - 1];
   }, [timelineLots, selectedLotKey]);
 
-  const exportLots = () => {
-    if (!lots || lots.length === 0) {
-      return;
-    }
-    const header = ["symbol", "quantity", "cost_basis_price", "cost_basis_money", "open_datetime", "unrealized_pnl"];
-    const rows = lots.map((lot) =>
-      [lot.symbol ?? symbol, lot.quantity, lot.cost_basis_price, lot.cost_basis_money, lot.open_datetime, lot.unrealized_pnl]
-        .map((cell) => `"${String(cell ?? "")}"`)
-        .join(","),
-    );
-    const csv = [header.join(","), ...rows].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${symbol}-lots.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
-
   return (
     <div className="details-page">
       <div className="dp-topbar">
@@ -1573,32 +1552,6 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
               )}
             </article>
           </section>
-
-          <section className="dp-cta">
-            <span className="dp-cta-art" aria-hidden="true">
-              <svg viewBox="0 0 96 84" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M40 74V44" />
-                <path d="M40 52C40 44 33 38 24 38c0 8 7 14 16 14z" />
-                <path d="M40 48c0-9 7-16 17-16 0 9-8 16-17 16z" />
-                <path d="M40 60c0-6 5-11 12-11 0 6-5 11-12 11z" />
-                <path d="M30 74h20l-2 8H32z" />
-              </svg>
-            </span>
-            <div className="dp-cta-copy">
-              <p className="dp-cta-title">What would you like to do?</p>
-              <p className="dp-cta-sub">Manage your position or export your data.</p>
-            </div>
-            <div className="dp-cta-actions">
-              <button className="dp-btn dp-btn-primary" type="button" onClick={scrollToTop}>
-                Review Position <span aria-hidden="true">→</span>
-              </button>
-              <Link className="dp-btn" href="/trades">Add Shares</Link>
-              <Link className="dp-btn" href="/trades">Sell Shares</Link>
-              <button className="dp-btn" type="button" onClick={exportLots}>Export Lots</button>
-            </div>
-          </section>
-
-          <p className="dp-footnote">Quotes are delayed during market hours. Night session data is indicative.</p>
         </>
       )}
     </div>
