@@ -6771,6 +6771,47 @@ body:has(.dashboard-page) {
   top: -1px;
 }
 
+/* ── Card hover: gradient border ring + slight lift ───────────────────
+   The gradient ring is a masked pseudo-element so it follows each card's
+   rounded corners; it fades in on hover while the card floats up. */
+.pp-largest-card,
+.pp-bars-card,
+.pp-ownership {
+  position: relative;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pp-largest-card::after,
+.pp-bars-card::after,
+.pp-ownership::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(135deg, #efe9de 0%, #d97757 70%, #e6a85c 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.pp-largest-card:hover,
+.pp-bars-card:hover,
+.pp-ownership:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 34px rgba(79, 61, 34, 0.1);
+}
+
+.pp-largest-card:hover::after,
+.pp-bars-card:hover::after,
+.pp-ownership:hover::after {
+  opacity: 1;
+}
+
 /* ── Responsive ───────────────────────────────────────────────────── */
 @media (max-width: 1080px) {
   .pp-allocation {
@@ -7329,18 +7370,30 @@ body:has(.dashboard-page) {
 .dp-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.dp-stat {
+  /* One merged long card; segments are separated by inset dividers. */
   background: #faf8f5;
   border: 1px solid var(--dp-hairline);
   border-radius: var(--radius-md);
+}
+
+.dp-stat {
+  position: relative;
   padding: 16px 18px;
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 14px;
+}
+
+/* Inset vertical divider between segments — does not span the full height. */
+.dp-stat:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 1px;
+  background: var(--dp-hairline);
 }
 
 /* Icon takes the left third of the card, enlarged; text fills the right two
@@ -7698,7 +7751,7 @@ body:has(.dashboard-page) {
 .dp-snapshot,
 .dp-status,
 .dp-chart-panel,
-.dp-stat,
+.dp-stats,
 .dp-timeline-panel,
 .dp-lot-panel,
 .dp-cta {
@@ -7709,7 +7762,7 @@ body:has(.dashboard-page) {
 .dp-snapshot::after,
 .dp-status::after,
 .dp-chart-panel::after,
-.dp-stat::after,
+.dp-stats::after,
 .dp-timeline-panel::after,
 .dp-lot-panel::after,
 .dp-cta::after {
@@ -7735,7 +7788,7 @@ body:has(.dashboard-page) {
 .dp-snapshot:hover,
 .dp-status:hover,
 .dp-chart-panel:hover,
-.dp-stat:hover,
+.dp-stats:hover,
 .dp-timeline-panel:hover,
 .dp-lot-panel:hover,
 .dp-cta:hover {
@@ -7746,7 +7799,7 @@ body:has(.dashboard-page) {
 .dp-snapshot:hover::after,
 .dp-status:hover::after,
 .dp-chart-panel:hover::after,
-.dp-stat:hover::after,
+.dp-stats:hover::after,
 .dp-timeline-panel:hover::after,
 .dp-lot-panel:hover::after,
 .dp-cta:hover::after {
@@ -7765,6 +7818,12 @@ body:has(.dashboard-page) {
 
   .dp-stats {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* In the 2-up layout the left-column segment starts a new row, so drop its
+     divider (only keep the one between each row's two segments). */
+  .dp-stat:nth-child(odd)::before {
+    display: none;
   }
 
   .dp-detail-grid {
