@@ -6888,8 +6888,7 @@ body:has(.dashboard-page) {
 .dp-chart-panel,
 .dp-stat,
 .dp-timeline-panel,
-.dp-lot-panel,
-.dp-cta {
+.dp-lot-panel {
   font-family: var(--serif-display);
 }
 
@@ -7508,6 +7507,7 @@ body:has(.dashboard-page) {
   font-weight: 600;
   color: var(--dp-ink);
   white-space: nowrap;
+  transition: color 0.14s ease;
 }
 
 .dp-timeline-now .dp-timeline-what {
@@ -7521,23 +7521,32 @@ body:has(.dashboard-page) {
   width: 100%;
   display: grid;
   grid-template-columns: 24px 100px 1fr auto;
-  align-items: center;
+  /* Baseline-align so the date, the description's first line, and the "Lot N"
+     pill text all sit on the same line even when the description wraps. */
+  align-items: baseline;
   gap: 0 12px;
   background: none;
   border: none;
   cursor: pointer;
   padding: 12px 8px 12px 0;
   text-align: left;
-  border-radius: 12px;
-  transition: background 0.14s ease;
 }
 
-.dp-timeline-hit:hover {
-  background: rgba(204, 120, 92, 0.05);
+/* Hover: no background — the row's text turns the accent colour instead. */
+.dp-timeline-hit:hover .dp-timeline-when,
+.dp-timeline-hit:hover .dp-timeline-what {
+  color: #d97757;
 }
 
-.dp-timeline-row.is-selected .dp-timeline-hit {
-  background: rgba(204, 120, 92, 0.09);
+/* Selected: accent text + a filled accent pill. */
+.dp-timeline-row.is-selected .dp-timeline-when,
+.dp-timeline-row.is-selected .dp-timeline-what {
+  color: #d97757;
+}
+
+.dp-timeline-row.is-selected .dp-lot-tag {
+  background: #d97757;
+  color: #fff;
 }
 
 .dp-timeline-row.is-selected .dp-timeline-dot {
@@ -7547,6 +7556,7 @@ body:has(.dashboard-page) {
 .dp-timeline-hit .dp-timeline-what {
   color: var(--dp-body);
   font-size: 14px;
+  transition: color 0.14s ease;
 }
 
 .dp-lot-tag {
@@ -7556,7 +7566,7 @@ body:has(.dashboard-page) {
   letter-spacing: 0.04em;
   color: var(--dp-muted);
   background: var(--dp-cream-strong);
-  border-radius: var(--radius-pill);
+  border-radius: 5px;
   padding: 4px 10px;
   white-space: nowrap;
 }
@@ -7613,6 +7623,15 @@ body:has(.dashboard-page) {
   font-variant-numeric: tabular-nums;
 }
 
+/* Keep the P&L value's green-up / red-down even though the default is ink. */
+.dp-lot-stats dd.dp-pnl-up {
+  color: var(--dp-success);
+}
+
+.dp-lot-stats dd.dp-pnl-down {
+  color: var(--dp-error);
+}
+
 .dp-lot-spark-wrap {
   display: flex;
   align-items: center;
@@ -7656,95 +7675,6 @@ body:has(.dashboard-page) {
   white-space: nowrap;
 }
 
-/* ── CTA band ─────────────────────────────────────────────────────── */
-.dp-cta {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  background: var(--dp-cream);
-  border: 1px solid var(--dp-hairline);
-  border-radius: var(--radius-lg);
-  padding: 24px 30px;
-}
-
-.dp-cta-art {
-  color: var(--dp-coral);
-  width: 74px;
-  height: 64px;
-  flex: none;
-}
-
-.dp-cta-art svg {
-  width: 100%;
-  height: 100%;
-}
-
-.dp-cta-copy {
-  margin-right: auto;
-}
-
-.dp-cta-title {
-  font-family: var(--serif-display);
-  font-size: 20px;
-  font-weight: 400;
-  color: var(--dp-ink);
-  letter-spacing: -0.01em;
-}
-
-.dp-cta-sub {
-  font-size: 14px;
-  color: var(--dp-muted);
-  margin-top: 4px;
-}
-
-.dp-cta-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.dp-btn {
-  appearance: none;
-  border: 1px solid var(--dp-hairline);
-  background: var(--dp-canvas);
-  color: var(--dp-ink);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  padding: 11px 18px;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.dp-btn:hover {
-  border-color: var(--dp-muted-soft);
-}
-
-.dp-btn-primary {
-  background: var(--dp-coral);
-  border-color: var(--dp-coral);
-  color: #fff;
-}
-
-.dp-btn-primary:hover {
-  background: var(--dp-coral-active);
-  border-color: var(--dp-coral-active);
-}
-
-/* ── Footnote ─────────────────────────────────────────────────────── */
-.dp-footnote {
-  color: var(--dp-muted-soft);
-  font-size: 13px;
-  text-align: center;
-}
-
 /* ── Card hover: gradient border + slight lift ────────────────────────
    The gradient sits on a masked ::after ring so it follows each card's
    rounded corners; it fades in on hover while the card floats up. */
@@ -7753,8 +7683,7 @@ body:has(.dashboard-page) {
 .dp-chart-panel,
 .dp-stats,
 .dp-timeline-panel,
-.dp-lot-panel,
-.dp-cta {
+.dp-lot-panel {
   position: relative;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
@@ -7764,8 +7693,7 @@ body:has(.dashboard-page) {
 .dp-chart-panel::after,
 .dp-stats::after,
 .dp-timeline-panel::after,
-.dp-lot-panel::after,
-.dp-cta::after {
+.dp-lot-panel::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -7790,8 +7718,7 @@ body:has(.dashboard-page) {
 .dp-chart-panel:hover,
 .dp-stats:hover,
 .dp-timeline-panel:hover,
-.dp-lot-panel:hover,
-.dp-cta:hover {
+.dp-lot-panel:hover {
   transform: translateY(-3px);
   box-shadow: 0 12px 26px rgba(79, 61, 34, 0.1);
 }
@@ -7801,8 +7728,7 @@ body:has(.dashboard-page) {
 .dp-chart-panel:hover::after,
 .dp-stats:hover::after,
 .dp-timeline-panel:hover::after,
-.dp-lot-panel:hover::after,
-.dp-cta:hover::after {
+.dp-lot-panel:hover::after {
   opacity: 1;
 }
 
@@ -7842,22 +7768,12 @@ body:has(.dashboard-page) {
 
   .dp-chart-panel,
   .dp-timeline-panel,
-  .dp-lot-panel,
-  .dp-cta {
+  .dp-lot-panel {
     padding: 22px 20px;
   }
 
   .dp-panel-head {
     flex-direction: column;
-  }
-
-  .dp-cta {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .dp-cta-actions {
-    justify-content: flex-start;
   }
 
   .dp-timeline-now,
