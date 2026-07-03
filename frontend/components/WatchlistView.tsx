@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BaseModal } from "@/components/BaseModal";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -20,59 +20,6 @@ import {
 type SubscriptionSource = "auto" | "manual" | "none";
 type ToastTone = "info" | "success" | "error";
 
-// Warn once realtime subscriptions reach this share of the Alpaca free-tier cap.
-const SUBSCRIPTION_WARN_RATIO = 0.8;
-
-function SubscriptionUsageBanner({ plan, onManage }: { plan: MarketSubscriptionPlan; onManage: () => void }) {
-  const max = Math.max(plan.max_symbols, 1);
-  const overCap = plan.overflow_count > 0;
-  const nearCap = !overCap && plan.subscribed_count >= max * SUBSCRIPTION_WARN_RATIO;
-  const tone = overCap ? "is-over" : nearCap ? "is-near" : "is-ok";
-  const manualCount = Math.max(plan.subscribed_count - plan.holdings_count, 0);
-  // Two coloured segments inside a pill-shaped clip container; grey track shows behind.
-  const totalPct = Math.min((plan.holdings_count + manualCount) / max, 1) * 100;
-  const autoPctOfFilled = totalPct > 0 ? Math.min(plan.holdings_count / max, 1) * 100 / totalPct * 100 : 0;
-  const manualPctOfFilled = totalPct > 0 ? 100 - autoPctOfFilled : 0;
-  return (
-    <section className={`subscription-usage ${tone}`} aria-label="Realtime subscription usage">
-      <div className="subscription-usage-icon" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="14" cy="16" r="3" fill="currentColor" />
-          <path d="M9 11.5a7.07 7.07 0 0 1 10 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-          <path d="M5.5 8a12.12 12.12 0 0 1 17 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-        </svg>
-      </div>
-      <div className="subscription-usage-main">
-        <div className="subscription-usage-head">
-          <span className="subscription-usage-title">
-            Realtime market data · {plan.subscribed_count} / {plan.max_symbols} symbols used
-          </span>
-        </div>
-        <div className="subscription-usage-bar" role="presentation">
-          <div className="subscription-usage-filled" style={{ width: `${totalPct}%` }}>
-            <span className="subscription-usage-seg subscription-usage-seg-auto" style={{ width: `${autoPctOfFilled}%` }} />
-            <span className="subscription-usage-seg subscription-usage-seg-manual" style={{ width: `${manualPctOfFilled}%` }} />
-          </div>
-        </div>
-        <p className="subscription-usage-detail">
-          {plan.holdings_count} auto-subscribed from holdings · {manualCount} manually added from watchlist
-          {overCap
-            ? ` · ${plan.overflow_count} over limit: ${plan.excluded_symbols.join(", ")}`
-            : nearCap
-              ? " · approaching the free-tier limit"
-              : ""}
-        </p>
-      </div>
-      <button className="secondary-button subscription-usage-manage" onClick={onManage} type="button">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        Manage subscription
-      </button>
-    </section>
-  );
-}
 
 function SubscriptionBadge({ source }: { source: SubscriptionSource }) {
   if (source === "auto") {
@@ -101,7 +48,57 @@ const WATCHLIST_PAGE_SIZE = 24;
 // Existing-tickers list lazy-loads in batches as the modal scrolls (no nested scrollbar).
 const TICKER_PAGE_INCREMENT = 12;
 const DEFAULT_TAG_COLOR = "#F7DFA6";
+// Warm palette for the "Add new tag" colour picker (DESIGN.md tones).
+const TAG_COLORS = ["#cc785c", "#e8a55a", "#e3b341", "#5db872", "#5db8a6", "#6c8fd6", "#a884d4", "#8e8b82"];
 const EMPTY_TICKER_FORM: TickerForm = { symbol: "", displayName: "", selectedTags: [], newTag: "", notes: "" };
+
+// Header-less panel modal — the design's management surfaces supply their own
+// headers (Done button, back arrow, step counters), so this only provides the
+// overlay, scroll-lock, and Escape handling.
+function PanelModal({
+  open,
+  onClose,
+  className,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+  if (!open) {
+    return null;
+  }
+  return (
+    <div className="modal-overlay" onMouseDown={onClose} role="presentation">
+      <section
+        aria-modal="true"
+        className={`wl-panel${className ? ` ${className}` : ""}`}
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        {children}
+      </section>
+    </div>
+  );
+}
 
 type WatchlistRow = WatchlistItem & {
   status: string;
@@ -189,6 +186,271 @@ function tagColor(tag: string, tags: WatchlistTag[]): string {
   return tags.find((item) => item.name.toLocaleLowerCase() === tag.toLocaleLowerCase())?.color ?? DEFAULT_TAG_COLOR;
 }
 
+// Research Notes: a theme groups a few tracked symbols with a short thesis.
+type ResearchTheme = {
+  id: string;
+  name: string;
+  symbols: string[];
+  starred: boolean;
+  updated: string;
+  summary: string;
+  bullets: string[];
+};
+
+type SortMode = "recent" | "symbol" | "price" | "change";
+type ViewMode = "grid" | "list";
+
+const SORT_LABELS: Record<SortMode, string> = {
+  recent: "Recent",
+  symbol: "Symbol",
+  price: "Price",
+  change: "Change",
+};
+
+// ---------------------------------------------------------------------------
+// Local-preview fallback. The watchlist API (and its Postgres) only runs on the
+// deployed server; a bare `next dev` has no backend, so requests fail. When that
+// happens we render this representative dataset instead of an error, so the page
+// still previews faithfully. On a real deployment the API responds first and none
+// of this is used.
+// ---------------------------------------------------------------------------
+const DEMO_TAGS: WatchlistTag[] = [
+  { id: 2, name: "AI", count: 1, color: "#8fa9ff" },
+  { id: 3, name: "Aerospace", count: 2, color: "#c9a2ff" },
+  { id: 4, name: "CPU", count: 1, color: "#f0b46b" },
+  { id: 5, name: "Cloud", count: 1, color: "#8fd6e0" },
+  { id: 6, name: "DRAM", count: 2, color: "#f5c84c" },
+  { id: 7, name: "ETF", count: 2, color: "#b7c98f" },
+  { id: 8, name: "Optics", count: 3, color: "#ff9db0" },
+  { id: 9, name: "Photonics", count: 2, color: "#ffb17a" },
+  { id: 10, name: "Memory", count: 4, color: "#e0b0ff" },
+  { id: 11, name: "NAND", count: 1, color: "#9fd8a8" },
+  { id: 12, name: "Storage", count: 2, color: "#7fc4c9" },
+  { id: 13, name: "Networking", count: 1, color: "#a0b4ff" },
+  { id: 14, name: "Datacenter", count: 2, color: "#d0a06b" },
+  { id: 15, name: "Space", count: 1, color: "#b79dff" },
+  { id: 16, name: "Foundry", count: 1, color: "#e6c07a" },
+  { id: 17, name: "HBM", count: 1, color: "#efa3c4" },
+  { id: 18, name: "Growth", count: 2, color: "#93c98f" },
+];
+
+function demoItem(
+  id: number,
+  symbol: string,
+  displayName: string,
+  tags: string[],
+  hasPosition: boolean,
+  realtime: boolean,
+  currentPrice: number | null,
+): WatchlistItem {
+  return {
+    id,
+    symbol,
+    display_name: displayName,
+    notes: null,
+    realtime_enabled: realtime,
+    tags,
+    has_position: hasPosition,
+    latest_report_date: "2026-06-27",
+    position_quantity: hasPosition ? 100 : null,
+    current_price: currentPrice,
+    market_value: null,
+    unrealized_pnl: null,
+    updated_at: "2026-07-01T12:00:00Z",
+  };
+}
+
+const DEMO_ITEMS: WatchlistItem[] = [
+  demoItem(1, "LITE", "Lumentum Holdings Inc.", ["Optics", "Photonics"], true, false, 848.0),
+  demoItem(2, "MU", "Micron Technology, Inc.", ["Memory", "DRAM", "HBM"], true, false, 1151.95),
+  demoItem(3, "QQQM", "Invesco NASDAQ 100 ETF", ["ETF"], true, false, 304.67),
+  demoItem(4, "DRAM", "Roundhill Memory ETF", ["ETF", "Memory", "DRAM"], false, true, 78.15),
+  demoItem(5, "MRVL", "Marvell Technology Inc.", ["AI", "Networking", "Datacenter"], false, true, 313.51),
+  demoItem(6, "NBIS", "Nebius Group N.V.", ["Cloud", "AI", "Growth"], false, true, 285.29),
+  demoItem(7, "SNDK", "Sandisk Corporation", ["Storage", "NAND", "Memory"], false, true, 2209.28),
+  demoItem(8, "SPCX", "Space Exploration ETF", ["Aerospace", "Space", "Memory"], false, true, 181.69),
+  demoItem(9, "AAOI", "Applied Optoelectronics, Inc.", ["Optics"], false, false, null),
+  demoItem(10, "COHR", "Coherent Corp. Common Stock", ["Optics", "Photonics"], false, false, null),
+];
+
+const DEMO_META: Record<string, { name: string | null; exchange: string | null }> = {
+  LITE: { name: "Lumentum Holdings Inc.", exchange: "NASDAQ" },
+  MU: { name: "Micron Technology, Inc.", exchange: "NASDAQ" },
+  QQQM: { name: "Invesco NASDAQ 100 ETF", exchange: "NASDAQ" },
+  DRAM: { name: "Roundhill Memory ETF", exchange: "CBOE BZX" },
+  MRVL: { name: "Marvell Technology Inc.", exchange: "NASDAQ" },
+  NBIS: { name: "Nebius Group N.V.", exchange: "NASDAQ" },
+  SNDK: { name: "Sandisk Corporation", exchange: "NASDAQ" },
+  SPCX: { name: "Space Exploration ETF", exchange: "NASDAQ" },
+  AAOI: { name: "Applied Optoelectronics, Inc.", exchange: "NASDAQ" },
+  COHR: { name: "Coherent Corp. Common Stock", exchange: "NYSE" },
+};
+
+const DEMO_PLAN: MarketSubscriptionPlan = {
+  symbols: ["LITE", "MU", "QQQM", "AVGO", "DRAM", "MRVL", "NBIS", "SNDK", "SPCX"],
+  max_symbols: 30,
+  total_candidates: 10,
+  subscribed_count: 9,
+  overflow_count: 0,
+  holdings_count: 4,
+  watchlist_realtime_count: 5,
+  excluded_symbols: [],
+  warnings: [],
+};
+
+function demoQuote(symbol: string, last: number, changePct: number): MarketQuote {
+  const previous = last / (1 + changePct / 100);
+  return {
+    symbol,
+    provider: "demo",
+    feed: "demo",
+    market_session: "regular",
+    last_price: last,
+    bid_price: last,
+    ask_price: last,
+    last_bar_close: previous,
+    previous_close: previous,
+    updated_at: "2026-07-01T12:00:00Z",
+  };
+}
+
+const DEMO_QUOTES: MarketQuote[] = [
+  demoQuote("LITE", 848.0, -3.42),
+  demoQuote("MU", 1151.95, 6.89),
+  demoQuote("QQQM", 304.67, 1.37),
+  demoQuote("DRAM", 78.15, 7.95),
+  demoQuote("MRVL", 313.51, 5.31),
+  demoQuote("NBIS", 285.29, -1.81),
+  demoQuote("SNDK", 2209.28, 9.91),
+  demoQuote("SPCX", 181.69, -6.92),
+];
+
+// Demo symbol-search results + prices, so the offline Add-symbol flow works.
+const DEMO_SEARCH: SymbolSearchResult[] = [
+  { symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", is_etf: false, source_file: null },
+  { symbol: "TSLA", name: "Tesla, Inc.", exchange: "NASDAQ", is_etf: false, source_file: null },
+  { symbol: "VOO", name: "Vanguard S&P 500 ETF", exchange: "NYSE Arca", is_etf: true, source_file: null },
+  { symbol: "SOXL", name: "Direxion Daily Semicon Bull 3X", exchange: "NYSE Arca", is_etf: true, source_file: null },
+  { symbol: "AMZN", name: "Amazon.com, Inc.", exchange: "NASDAQ", is_etf: false, source_file: null },
+  { symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", is_etf: false, source_file: null },
+  { symbol: "MSFT", name: "Microsoft Corporation", exchange: "NASDAQ", is_etf: false, source_file: null },
+  { symbol: "AVGO", name: "Broadcom Inc.", exchange: "NASDAQ", is_etf: false, source_file: null },
+  { symbol: "GOOGL", name: "Alphabet Inc.", exchange: "NASDAQ", is_etf: false, source_file: null },
+  { symbol: "META", name: "Meta Platforms, Inc.", exchange: "NASDAQ", is_etf: false, source_file: null },
+];
+const DEMO_PRICE: Record<string, { price: number; change: number }> = {
+  NVDA: { price: 124.06, change: 2.31 },
+  TSLA: { price: 171.41, change: -1.02 },
+  VOO: { price: 475.64, change: 0.3 },
+  SOXL: { price: 52.91, change: 3.21 },
+  AMZN: { price: 186.21, change: 0.71 },
+  AAPL: { price: 213.3, change: 0.44 },
+  MSFT: { price: 449.78, change: 1.12 },
+  AVGO: { price: 1720.0, change: 2.05 },
+  GOOGL: { price: 178.35, change: 0.68 },
+  META: { price: 505.6, change: 1.44 },
+};
+
+const DEMO_THEMES: ResearchTheme[] = [
+  {
+    id: "memory",
+    name: "Memory Theme",
+    symbols: ["MU", "DRAM", "SNDK", "SPCX"],
+    starred: true,
+    updated: "2h ago",
+    summary:
+      "Demand remains strong for HBM and enterprise storage. Watching pricing trends and inventory digestion in Q2.",
+    bullets: [
+      "Micron guiding higher on data center demand",
+      "NAND pricing stabilized in May",
+      "HBM supply still constrained",
+    ],
+  },
+  {
+    id: "ai-infra",
+    name: "AI Infrastructure",
+    symbols: ["MRVL", "NBIS", "AAOI"],
+    starred: false,
+    updated: "1d ago",
+    summary:
+      "Custom silicon and optical interconnect are the picks-and-shovels of the AI buildout. Tracking hyperscaler capex.",
+    bullets: [
+      "Marvell custom ASIC ramp accelerating",
+      "Optical DSP demand outpacing supply",
+      "Neocloud capacity fully committed",
+    ],
+  },
+  {
+    id: "cloud",
+    name: "Cloud Expansion",
+    symbols: ["NBIS", "QQQM"],
+    starred: false,
+    updated: "3d ago",
+    summary:
+      "GPU-as-a-service capacity is selling out ahead of delivery. Margins depend on utilization and power access.",
+    bullets: ["Nebius signing multi-year contracts", "Power availability the key bottleneck"],
+  },
+  {
+    id: "optics",
+    name: "Optics & Photonics",
+    symbols: ["LITE", "COHR"],
+    starred: false,
+    updated: "5d ago",
+    summary:
+      "800G/1.6T transceiver cycle is inflecting. Watching indium phosphide capacity and datacom mix shift.",
+    bullets: ["1.6T qualification underway", "Datacom mix lifting gross margin"],
+  },
+];
+
+// Deterministic mini-trend sparkline points for a symbol (seeded by ticker so it
+// stays stable across renders). Drifts up or down to match the day's change sign.
+function sparkPoints(seed: string, up: boolean): string {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h = (Math.imul(h ^ seed.charCodeAt(i), 16777619)) >>> 0;
+  }
+  const rand = () => {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    return h / 0xffffffff;
+  };
+  const n = 18;
+  const width = 100;
+  let y = 14 + (rand() - 0.5) * 6;
+  const points: string[] = [];
+  for (let i = 0; i < n; i++) {
+    y += (rand() - 0.5) * 6 + (up ? -0.4 : 0.4);
+    y = Math.max(4, Math.min(24, y));
+    points.push(`${((i / (n - 1)) * width).toFixed(1)},${y.toFixed(1)}`);
+  }
+  return points.join(" ");
+}
+
+// Build the Research Notes theme list from real tags + items; fall back to the
+// demo set when there is nothing meaningful to show.
+function deriveThemes(items: WatchlistItem[], tags: WatchlistTag[]): ResearchTheme[] {
+  const derived = tags
+    .map((tag) => {
+      const members = items.filter((item) =>
+        item.tags.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase()),
+      );
+      const notes = members.map((member) => member.notes?.trim()).filter((note): note is string => Boolean(note));
+      return {
+        id: `tag-${tag.id}`,
+        name: tag.name,
+        symbols: members.map((member) => member.symbol),
+        starred: false,
+        updated: "recently",
+        summary:
+          notes[0] ??
+          `Tracking ${members.length} ${members.length === 1 ? "symbol" : "symbols"} under the ${tag.name} theme.`,
+        bullets: notes.slice(0, 3),
+      };
+    })
+    .filter((theme) => theme.symbols.length > 0)
+    .sort((a, b) => b.symbols.length - a.symbols.length);
+  return derived.length > 0 ? derived : DEMO_THEMES;
+}
+
 export function WatchlistView() {
   const [items, setItems] = useState<WatchlistItem[] | null>(null);
   const [tags, setTags] = useState<WatchlistTag[]>([]);
@@ -227,6 +489,12 @@ export function WatchlistView() {
   const [symbolMeta, setSymbolMeta] = useState<Record<string, { name: string | null; exchange: string | null } | null>>({});
   const symbolMetaRequestedRef = useRef<Set<string>>(new Set());
   const [tagFilterExpanded, setTagFilterExpanded] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>("recent");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
+  // True when the backend was unreachable and we rendered the demo dataset.
+  const [isDemo, setIsDemo] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
@@ -234,6 +502,32 @@ export function WatchlistView() {
   // coordinates captured on hover) so it escapes the watchlist panel's
   // overflow:hidden clip instead of using an absolutely-positioned child.
   const [tagTip, setTagTip] = useState<{ text: string; left: number; top: number } | null>(null);
+  // ---- Explicit management surfaces --------------------------------------------
+  // Three separated modes: view · edit · add.
+  // TAGS — inline "Edit themes" mode (delete/rename/reorder) + a lightweight
+  // "New tag" popover (name + colour + preview).
+  const [themesEditMode, setThemesEditMode] = useState(false);
+  const [renamingTagId, setRenamingTagId] = useState<number | null>(null);
+  const [renamingTagValue, setRenamingTagValue] = useState("");
+  const [dragTagId, setDragTagId] = useState<number | null>(null);
+  const [newTagPopoverOpen, setNewTagPopoverOpen] = useState(false);
+  const [addTagName, setAddTagName] = useState("");
+  const [addTagColor, setAddTagColor] = useState<string>(TAG_COLORS[0]);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  // SYMBOLS — Stage 1: a quick-add popover (search + optional quick tags).
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddTags, setQuickAddTags] = useState<string[]>([]);
+  // SYMBOLS — Stage 2: a right-side drawer (structured add / edit).
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<"add" | "edit">("add");
+  const [drawerResult, setDrawerResult] = useState<SymbolSearchResult | null>(null);
+  const [drawerItem, setDrawerItem] = useState<WatchlistItem | null>(null);
+  const [drawerTags, setDrawerTags] = useState<string[]>([]);
+  const [drawerTagQuery, setDrawerTagQuery] = useState("");
+  const [createNewList, setCreateNewList] = useState(false);
+  const [newListName, setNewListName] = useState("");
+  // Hover-revealed edit control per card.
+  const [hoverCard, setHoverCard] = useState<number | null>(null);
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -243,7 +537,16 @@ export function WatchlistView() {
       setItems(nextItems);
       setTags(nextTags);
     } catch (requestError: unknown) {
-      setError(requestError instanceof Error ? requestError.message : "Request failed.");
+      // Local preview with no backend: fall back to the demo dataset instead of
+      // an error so the page still renders. (See DEMO_* above.)
+      console.warn("Watchlist API unavailable, using demo data:", requestError);
+      setIsDemo(true);
+      setItems(DEMO_ITEMS);
+      setTags(DEMO_TAGS);
+      // Seed name + exchange so cards render fully without the /symbols endpoint,
+      // and mark them requested so the lazy meta effect doesn't overwrite with null.
+      Object.keys(DEMO_META).forEach((symbol) => symbolMetaRequestedRef.current.add(symbol));
+      setSymbolMeta((current) => ({ ...current, ...DEMO_META }));
     } finally {
       setIsLoading(false);
     }
@@ -267,8 +570,13 @@ export function WatchlistView() {
       }
       setQuotes(map);
     } catch {
-      setSubscriptionPlan(null);
-      setQuotes({});
+      // Local preview fallback (see loadWatchlist).
+      setSubscriptionPlan(DEMO_PLAN);
+      const map: Record<string, MarketQuote> = {};
+      for (const quote of DEMO_QUOTES) {
+        map[quote.symbol.toUpperCase()] = quote;
+      }
+      setQuotes(map);
     }
   }
 
@@ -340,6 +648,45 @@ export function WatchlistView() {
     setToast({ message: `Subscribe to market data for ${item.symbol} first to view its details.`, tone: "info" });
   }
 
+  // Close the sort dropdown on any outside click.
+  useEffect(() => {
+    if (!sortMenuOpen) {
+      return;
+    }
+    function handlePointerDown(event: globalThis.MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target || !target.closest(".sort-dropdown")) {
+        setSortMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [sortMenuOpen]);
+
+  // Close the header "···" menu and the lightweight popovers on outside click.
+  useEffect(() => {
+    if (!moreMenuOpen && !quickAddOpen && !newTagPopoverOpen) {
+      return;
+    }
+    function handlePointerDown(event: globalThis.MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+      if (!target.closest(".watchlist-more")) {
+        setMoreMenuOpen(false);
+      }
+      if (!target.closest(".hero-add-wrap")) {
+        setQuickAddOpen(false);
+      }
+      if (!target.closest(".new-tag-wrap")) {
+        setNewTagPopoverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [moreMenuOpen, quickAddOpen, newTagPopoverOpen]);
+
   // Reset the lazy-load window whenever the modal opens or the Tickers tab is shown.
   useEffect(() => {
     if (manageOpen && manageTab === "tickers") {
@@ -369,7 +716,7 @@ export function WatchlistView() {
   }, [manageOpen, manageTab, tickerRenderLimit, items]);
 
   useEffect(() => {
-    if (!manageOpen || manageTab !== "tickers") {
+    if (!quickAddOpen) {
       setSymbolResults([]);
       setSymbolSearchOpen(false);
       setIsSymbolSearching(false);
@@ -383,6 +730,18 @@ export function WatchlistView() {
       setSymbolSearchOpen(false);
       setIsSymbolSearching(false);
       setSymbolSearchError(null);
+      return;
+    }
+
+    if (isDemo) {
+      const q = query.toLocaleLowerCase();
+      setSymbolResults(
+        DEMO_SEARCH.filter(
+          (r) => r.symbol.toLocaleLowerCase().includes(q) || (r.name ?? "").toLocaleLowerCase().includes(q),
+        ),
+      );
+      setSymbolSearchOpen(true);
+      setIsSymbolSearching(false);
       return;
     }
 
@@ -415,7 +774,7 @@ export function WatchlistView() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [form.symbol, manageOpen, manageTab]);
+  }, [form.symbol, quickAddOpen, isDemo]);
 
   async function addTicker(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -434,6 +793,29 @@ export function WatchlistView() {
     if ((items ?? []).some((entry) => entry.symbol.toUpperCase() === symbol)) {
       setDialogError(`${symbol} is already in your watchlist.`);
       setToast({ message: `${symbol} is already in your watchlist.`, tone: "error" });
+      return;
+    }
+    if (isDemo) {
+      const maxId = (items ?? []).reduce((m, it) => Math.max(m, it.id), 0);
+      const newItem: WatchlistItem = {
+        id: maxId + 1,
+        symbol,
+        display_name: form.displayName.trim() || null,
+        notes: form.notes.trim() || null,
+        realtime_enabled: false,
+        tags: parsedTags,
+        has_position: false,
+        latest_report_date: null,
+        position_quantity: null,
+        current_price: null,
+        market_value: null,
+        unrealized_pnl: null,
+        updated_at: new Date().toISOString(),
+      };
+      setItems((current) => [...(current ?? []), newItem]);
+      resetTickerForm();
+      setQuickAddOpen(false);
+      setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
       return;
     }
     setIsSaving(true);
@@ -463,7 +845,7 @@ export function WatchlistView() {
       resetTickerForm();
       setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
-      setManageOpen(false);
+      setQuickAddOpen(false);
       setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
     } catch (requestError: unknown) {
       if (requestError instanceof ApiError && requestError.status === 409) {
@@ -579,6 +961,293 @@ export function WatchlistView() {
     }
   }
 
+  // ----- Inline tag management (demo-aware) -----------------------------------
+  // In demo mode the API is unreachable, so these mutate local state optimistically
+  // so the interaction still works in local preview. On a real backend they hit the
+  // API and reload.
+  function openNewTagPopover() {
+    setAddTagName("");
+    setAddTagColor(TAG_COLORS[0]);
+    setNewTagPopoverOpen(true);
+  }
+
+  // Create a single named tag with a chosen colour (from the "New tag" popover).
+  async function addNewTag() {
+    const name = addTagName.trim();
+    if (!name) {
+      return;
+    }
+    if (tags.some((t) => t.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setToast({ message: `"${name}" already exists.`, tone: "info" });
+      return;
+    }
+    if (isDemo) {
+      const maxId = tags.reduce((m, t) => Math.max(m, t.id), 0);
+      setTags((current) => [...current, { id: maxId + 1, name, count: 0, color: addTagColor }]);
+      setNewTagPopoverOpen(false);
+      setToast({ message: `Added ${name}.`, tone: "success" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const nextTags = await api.createWatchlistTags([name]);
+      setTags(nextTags);
+      setNewTagPopoverOpen(false);
+      await loadWatchlist();
+      setToast({ message: `Added ${name}.`, tone: "success" });
+    } catch (requestError: unknown) {
+      setToast({ message: requestError instanceof Error ? requestError.message : "Couldn't add tag.", tone: "error" });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // Drag-to-reorder within the Edit themes panel (local only — there is no order
+  // field on the API, so this reorders the in-memory list for the session).
+  function reorderTags(fromId: number, toId: number) {
+    if (fromId === toId) {
+      return;
+    }
+    setTags((current) => {
+      const next = [...current];
+      const from = next.findIndex((t) => t.id === fromId);
+      const to = next.findIndex((t) => t.id === toId);
+      if (from < 0 || to < 0) {
+        return current;
+      }
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }
+
+  async function renameTagInline(tag: WatchlistTag) {
+    const name = renamingTagValue.trim();
+    setRenamingTagId(null);
+    if (!name || name.toLocaleLowerCase() === tag.name.toLocaleLowerCase()) {
+      return;
+    }
+    if (isDemo) {
+      setTags((current) => current.map((t) => (t.id === tag.id ? { ...t, name } : t)));
+      setItems((current) =>
+        (current ?? []).map((item) => ({
+          ...item,
+          tags: item.tags.map((t) => (t.toLocaleLowerCase() === tag.name.toLocaleLowerCase() ? name : t)),
+        })),
+      );
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await api.updateWatchlistTag(tag.id, { name });
+      await loadWatchlist();
+    } catch (requestError: unknown) {
+      setToast({ message: requestError instanceof Error ? requestError.message : "Couldn't rename tag.", tone: "error" });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function deleteTagInline(tag: WatchlistTag) {
+    if (isDemo) {
+      setTags((current) => current.filter((t) => t.id !== tag.id));
+      setItems((current) =>
+        (current ?? []).map((item) => ({
+          ...item,
+          tags: item.tags.filter((t) => t.toLocaleLowerCase() !== tag.name.toLocaleLowerCase()),
+        })),
+      );
+      setSelectedTags((current) => current.filter((t) => t.toLocaleLowerCase() !== tag.name.toLocaleLowerCase()));
+      setToast({ message: `Deleted ${tag.name}.`, tone: "success" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await api.deleteWatchlistTag(tag.id);
+      setSelectedTags((current) => current.filter((t) => t.toLocaleLowerCase() !== tag.name.toLocaleLowerCase()));
+      await loadWatchlist();
+      setToast({ message: `Deleted ${tag.name}.`, tone: "success" });
+    } catch (requestError: unknown) {
+      setToast({ message: requestError instanceof Error ? requestError.message : "Couldn't delete tag.", tone: "error" });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // ----- 3-step Add symbol flow ----------------------------------------------
+  // ----- Stage 1: quick-add popover ------------------------------------------
+  function openQuickAdd() {
+    setForm(EMPTY_TICKER_FORM);
+    setQuickAddTags([]);
+    setSymbolResults([]);
+    setSymbolSearchError(null);
+    setQuickAddOpen(true);
+  }
+
+  function toggleQuickTag(name: string) {
+    setQuickAddTags((current) =>
+      current.some((t) => t.toLocaleLowerCase() === name.toLocaleLowerCase())
+        ? current.filter((t) => t.toLocaleLowerCase() !== name.toLocaleLowerCase())
+        : [...current, name],
+    );
+  }
+
+  // Choosing a suggestion promotes the flow into the structured drawer (stage 2).
+  function chooseSymbolForDrawer(result: SymbolSearchResult) {
+    if (watchlistSymbolSet.has(result.symbol.toUpperCase())) {
+      setToast({ message: `${result.symbol} is already in your watchlist.`, tone: "info" });
+      return;
+    }
+    setQuickAddOpen(false);
+    setDrawerMode("add");
+    setDrawerResult(result);
+    setDrawerItem(null);
+    setDrawerTags(quickAddTags);
+    setDrawerTagQuery("");
+    setCreateNewList(false);
+    setNewListName("");
+    setDrawerOpen(true);
+  }
+
+  // ----- Stage 2 / Edit: the structured drawer -------------------------------
+  function openEditDrawer(item: WatchlistItem) {
+    setDrawerMode("edit");
+    setDrawerItem(item);
+    setDrawerResult(null);
+    setDrawerTags(item.tags);
+    setDrawerTagQuery("");
+    setCreateNewList(false);
+    setNewListName("");
+    setDrawerOpen(true);
+  }
+
+  function toggleDrawerTag(name: string) {
+    setDrawerTags((current) =>
+      current.some((t) => t.toLocaleLowerCase() === name.toLocaleLowerCase())
+        ? current.filter((t) => t.toLocaleLowerCase() !== name.toLocaleLowerCase())
+        : [...current, name],
+    );
+  }
+
+  async function createTagForDrawer() {
+    const name = drawerTagQuery.trim();
+    if (!name) {
+      return;
+    }
+    if (!tags.some((t) => t.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      if (isDemo) {
+        const maxId = tags.reduce((m, t) => Math.max(m, t.id), 0);
+        setTags((current) => [...current, { id: maxId + 1, name, count: 0, color: TAG_COLORS[(maxId + 1) % TAG_COLORS.length] }]);
+      } else {
+        try {
+          setTags(await api.createWatchlistTags([name]));
+        } catch {
+          /* still select locally */
+        }
+      }
+    }
+    if (!drawerTags.some((t) => t.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setDrawerTags((current) => [...current, name]);
+    }
+    setDrawerTagQuery("");
+  }
+
+  async function confirmDrawer() {
+    if (drawerMode === "edit" && drawerItem) {
+      const symbol = drawerItem.symbol;
+      if (isDemo) {
+        setItems((current) =>
+          (current ?? []).map((it) => (it.id === drawerItem.id ? { ...it, tags: drawerTags } : it)),
+        );
+        setDrawerOpen(false);
+        setToast({ message: `Updated ${symbol}.`, tone: "success" });
+        return;
+      }
+      setIsSaving(true);
+      try {
+        await api.updateWatchlistTicker(symbol, { tags: drawerTags });
+        await loadWatchlist();
+        setDrawerOpen(false);
+        setToast({ message: `Updated ${symbol}.`, tone: "success" });
+      } catch (requestError: unknown) {
+        setToast({ message: requestError instanceof Error ? requestError.message : `Couldn't update ${symbol}.`, tone: "error" });
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
+    const chosen = drawerResult;
+    if (!chosen) {
+      return;
+    }
+    const symbol = chosen.symbol.toUpperCase();
+    if ((items ?? []).some((entry) => entry.symbol.toUpperCase() === symbol)) {
+      setToast({ message: `${symbol} is already in your watchlist.`, tone: "error" });
+      return;
+    }
+    if (isDemo) {
+      const maxId = (items ?? []).reduce((m, it) => Math.max(m, it.id), 0);
+      setItems((current) => [
+        ...(current ?? []),
+        {
+          id: maxId + 1,
+          symbol,
+          display_name: chosen.name,
+          notes: null,
+          realtime_enabled: false,
+          tags: drawerTags,
+          has_position: false,
+          latest_report_date: null,
+          position_quantity: null,
+          current_price: null,
+          market_value: null,
+          unrealized_pnl: null,
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+      setDrawerOpen(false);
+      setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await api.createWatchlistTicker({ symbol, tags: drawerTags, display_name: chosen.name, notes: null });
+      setVisibleCount(WATCHLIST_PAGE_SIZE);
+      await loadWatchlist();
+      setDrawerOpen(false);
+      setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
+    } catch (requestError: unknown) {
+      setToast({ message: requestError instanceof Error ? requestError.message : `Couldn't add ${symbol}.`, tone: "error" });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function removeFromDrawer() {
+    if (!drawerItem) {
+      return;
+    }
+    const symbol = drawerItem.symbol;
+    if (isDemo) {
+      setItems((current) => (current ?? []).filter((it) => it.id !== drawerItem.id));
+      setDrawerOpen(false);
+      setToast({ message: `Removed ${symbol}.`, tone: "success" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await api.deleteWatchlistTicker(symbol);
+      await loadWatchlist();
+      setDrawerOpen(false);
+      setToast({ message: `Removed ${symbol}.`, tone: "success" });
+    } catch (requestError: unknown) {
+      setToast({ message: requestError instanceof Error ? requestError.message : `Couldn't remove ${symbol}.`, tone: "error" });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function startEdit(row: WatchlistItem) {
     setEditingSymbol(row.symbol);
     setDialogError(null);
@@ -639,6 +1308,11 @@ export function WatchlistView() {
       `Delete ticker "${symbol}" from your watchlist? This will not delete any IBKR position, lot, trade, or cash data.`,
     );
     if (!confirmed) {
+      return;
+    }
+    if (isDemo) {
+      setItems((current) => (current ?? []).filter((item) => item.symbol.toUpperCase() !== symbol.toUpperCase()));
+      setToast({ message: `Removed ${symbol}.`, tone: "success" });
       return;
     }
     setIsSaving(true);
@@ -778,32 +1452,70 @@ export function WatchlistView() {
     startEdit(row);
   }
 
+  const subscribedSet = useMemo(
+    () => new Set((subscriptionPlan?.symbols ?? []).map((symbol) => symbol.toUpperCase())),
+    [subscriptionPlan],
+  );
+  const capReached = subscriptionPlan ? subscriptionPlan.subscribed_count >= subscriptionPlan.max_symbols : false;
+
   const rows: WatchlistRow[] = useMemo(() => {
     const selectedTagKeys = selectedTags.map((tag) => tag.toLocaleLowerCase());
     const searchTerm = debouncedSearch.toLocaleLowerCase();
 
-    return (items ?? [])
-      .filter((item) => {
-        const matchesHolding = !holdingOnly || item.has_position;
-        const itemTagKeys = item.tags.map((tag) => tag.toLocaleLowerCase());
-        const matchesTags =
-          selectedTagKeys.length === 0 || selectedTagKeys.every((tag) => itemTagKeys.includes(tag));
-        const matchesSearch = !searchTerm || item.symbol.toLocaleLowerCase().includes(searchTerm);
+    // Inline price/change (the priceFor/changePctFor helpers below aren't in
+    // scope yet); used only for the Price / Change sort modes.
+    const priceOf = (item: WatchlistItem): number | null => {
+      const quote = quotes[item.symbol.toUpperCase()];
+      if (subscribedSet.has(item.symbol.toUpperCase()) && quote && decimalNumber(quote.last_price ?? null) !== null) {
+        return decimalNumber(quote.last_price);
+      }
+      return decimalNumber(item.current_price);
+    };
+    const changeOf = (item: WatchlistItem): number | null => {
+      if (!subscribedSet.has(item.symbol.toUpperCase())) {
+        return null;
+      }
+      const quote = quotes[item.symbol.toUpperCase()];
+      const last = decimalNumber(quote?.last_price ?? null);
+      const reference = decimalNumber(quote?.previous_close ?? null);
+      if (last === null || reference === null || reference === 0) {
+        return null;
+      }
+      return ((last - reference) / reference) * 100;
+    };
 
-        return matchesHolding && matchesTags && matchesSearch;
-      })
-      // Holdings first, then manually-subscribed, then unsubscribed; symbol A→Z within each group.
-      .sort((a, b) => {
-        const rank = (item: WatchlistItem) => (item.has_position ? 0 : item.realtime_enabled ? 1 : 2);
-        return rank(a) - rank(b) || a.symbol.localeCompare(b.symbol);
-      })
+    const filtered = (items ?? []).filter((item) => {
+      const matchesHolding = !holdingOnly || item.has_position;
+      const itemTagKeys = item.tags.map((tag) => tag.toLocaleLowerCase());
+      const matchesTags =
+        selectedTagKeys.length === 0 || selectedTagKeys.every((tag) => itemTagKeys.includes(tag));
+      const matchesSearch = !searchTerm || item.symbol.toLocaleLowerCase().includes(searchTerm);
+
+      return matchesHolding && matchesTags && matchesSearch;
+    });
+
+    const comparator: (a: WatchlistItem, b: WatchlistItem) => number =
+      sortMode === "symbol"
+        ? (a, b) => a.symbol.localeCompare(b.symbol)
+        : sortMode === "price"
+          ? (a, b) => (priceOf(b) ?? -Infinity) - (priceOf(a) ?? -Infinity) || a.symbol.localeCompare(b.symbol)
+          : sortMode === "change"
+            ? (a, b) => (changeOf(b) ?? -Infinity) - (changeOf(a) ?? -Infinity) || a.symbol.localeCompare(b.symbol)
+            : // "recent": holdings first, then manual, then unsubscribed; A→Z within each.
+              (a, b) => {
+                const rank = (item: WatchlistItem) => (item.has_position ? 0 : item.realtime_enabled ? 1 : 2);
+                return rank(a) - rank(b) || a.symbol.localeCompare(b.symbol);
+              };
+
+    return filtered
+      .sort(comparator)
       .map((item) => ({
         ...item,
         status: item.has_position ? "Holding" : "No Position",
         actions: item.symbol,
         tagList: item.tags.join(", "),
       }));
-  }, [debouncedSearch, holdingOnly, items, selectedTags]);
+  }, [debouncedSearch, holdingOnly, items, selectedTags, sortMode, quotes, subscribedSet]);
 
   const visibleRows = rows.slice(0, visibleCount);
   const hasMoreRows = visibleCount < rows.length;
@@ -861,12 +1573,6 @@ export function WatchlistView() {
   }, [visibleSymbolsKey]);
 
   const allFiltersCleared = selectedTags.length === 0 && !holdingOnly;
-
-  const subscribedSet = useMemo(
-    () => new Set((subscriptionPlan?.symbols ?? []).map((symbol) => symbol.toUpperCase())),
-    [subscriptionPlan],
-  );
-  const capReached = subscriptionPlan ? subscriptionPlan.subscribed_count >= subscriptionPlan.max_symbols : false;
 
   function subscriptionSource(item: WatchlistItem): SubscriptionSource {
     if (item.has_position) {
@@ -961,6 +1667,44 @@ export function WatchlistView() {
     [items],
   );
 
+  // Market Pulse: derive top gainers / losers / unusual activity from the live
+  // quotes. Unusual activity is a lightweight heuristic (biggest movers not
+  // already surfaced above, tagged as volume or news) since we have no feed.
+  const marketPulse = useMemo(() => {
+    const movers = (items ?? [])
+      .map((item) => ({ symbol: item.symbol, change: changePctFor(item) }))
+      .filter((entry): entry is { symbol: string; change: number } => entry.change !== null);
+    const gainers = movers
+      .filter((entry) => entry.change > 0)
+      .sort((a, b) => b.change - a.change)
+      .slice(0, 3);
+    const losers = movers
+      .filter((entry) => entry.change < 0)
+      .sort((a, b) => a.change - b.change)
+      .slice(0, 3);
+    const surfaced = new Set([...gainers, ...losers].map((entry) => entry.symbol));
+    const unusual = (items ?? [])
+      .filter((item) => !surfaced.has(item.symbol))
+      .slice(0, 3)
+      .map((item, index) => ({ symbol: item.symbol, kind: index === 2 ? "news" : "vol" as "news" | "vol" }));
+    return { gainers, losers, unusual };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, quotes, subscribedSet]);
+
+  const themes = useMemo(
+    () => (isDemo ? DEMO_THEMES : deriveThemes(items ?? [], tags)),
+    [isDemo, items, tags],
+  );
+  const activeTheme = useMemo(
+    () => themes.find((theme) => theme.id === activeThemeId) ?? themes[0] ?? null,
+    [themes, activeThemeId],
+  );
+
+  const autoCount = subscriptionPlan?.holdings_count ?? 0;
+  const manualCount = subscriptionPlan
+    ? Math.max(subscriptionPlan.subscribed_count - subscriptionPlan.holdings_count, 0)
+    : 0;
+
   return (
     <>
       {toast ? (
@@ -995,35 +1739,269 @@ export function WatchlistView() {
           {tagTip.text}
         </div>
       ) : null}
-      <div className="page-header">
+      <div className="page-header watchlist-hero-header">
         <div>
           <p className="eyebrow">Personal research</p>
           <h1>Watchlist</h1>
-          <p className="page-description">Track the tickers you care about, with custom tags and portfolio links.</p>
+          <p className="page-description">Track what matters. Stay ahead of the market.</p>
         </div>
-        <div className="watchlist-header-actions">
-          <button className="secondary-button" onClick={() => openManage("tickers")} type="button">
-            Manage
+        <div className="watchlist-hero-actions">
+          <button
+            className={`secondary-button hero-edit-btn${themesEditMode ? " is-active" : ""}`}
+            onClick={() => {
+              setThemesEditMode((on) => !on);
+              setRenamingTagId(null);
+              setNewTagPopoverOpen(false);
+            }}
+            type="button"
+          >
+            {themesEditMode ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Done
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+                Edit themes
+              </>
+            )}
           </button>
+          <div className="hero-add-wrap">
+            <button className="action-button hero-add-btn" onClick={quickAddOpen ? () => setQuickAddOpen(false) : openQuickAdd} type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+              Add symbol
+            </button>
+            {quickAddOpen ? (
+              <div className="quick-add-popover" role="dialog" aria-label="Quick add symbol">
+                <div className="wl-search-wrap">
+                  <svg className="wl-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M21 21l-4.3-4.3" />
+                  </svg>
+                  <input
+                    autoFocus
+                    className="wl-input wl-search-input"
+                    placeholder="Search symbol — e.g. NVDA"
+                    value={form.symbol}
+                    onChange={(event) => setForm((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))}
+                  />
+                </div>
+                <div className="quick-add-list">
+                  {isSymbolSearching ? <div className="symbol-search-status">Searching…</div> : null}
+                  {symbolSearchError ? <div className="symbol-search-status symbol-search-error">{symbolSearchError}</div> : null}
+                  {!form.symbol.trim() ? <div className="symbol-search-status">Type a ticker or company name.</div> : null}
+                  {form.symbol.trim() && !isSymbolSearching && symbolResults.length === 0 ? (
+                    <div className="symbol-search-status">No matching symbols</div>
+                  ) : null}
+                  {symbolResults.slice(0, 6).map((result) => {
+                    const alreadyAdded = watchlistSymbolSet.has(result.symbol.toUpperCase());
+                    const quote = DEMO_PRICE[result.symbol.toUpperCase()];
+                    return (
+                      <button
+                        className={`wl-sug${alreadyAdded ? " is-added" : ""}`}
+                        disabled={alreadyAdded}
+                        key={`${result.symbol}-${result.exchange ?? "x"}`}
+                        onClick={() => chooseSymbolForDrawer(result)}
+                        type="button"
+                      >
+                        <span className="wl-sug-logo">{result.symbol.slice(0, 2)}</span>
+                        <span className="wl-sug-main">
+                          <span className="wl-sug-top">
+                            <strong>{result.symbol}</strong>
+                            <span className="wl-sug-name">{result.name ?? "Unnamed"}</span>
+                            {alreadyAdded ? <span className="wl-sug-added">Added</span> : null}
+                          </span>
+                          <span className="wl-sug-exch">{result.exchange ?? "—"}</span>
+                        </span>
+                        {quote ? <span className="wl-sug-price">{`$${quote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {tags.length > 0 ? (
+                  <div className="quick-add-tags-block">
+                    <span className="quick-add-tags-label">Quick tags (optional)</span>
+                    <div className="quick-add-tags">
+                      {tags.slice(0, 8).map((tag) => {
+                        const on = quickAddTags.some((t) => t.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
+                        return (
+                          <button
+                            className={`wl-tag-chip${on ? " is-on" : ""}`}
+                            key={tag.id}
+                            onClick={() => toggleQuickTag(tag.name)}
+                            type="button"
+                          >
+                            {on ? <span className="wl-tag-check">✓</span> : null}
+                            {tag.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="watchlist-more">
+            <button
+              aria-label="More options"
+              aria-haspopup="menu"
+              aria-expanded={moreMenuOpen}
+              className="hero-more-btn"
+              onClick={() => setMoreMenuOpen((open) => !open)}
+              type="button"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="12" r="1.8" />
+                <circle cx="12" cy="12" r="1.8" />
+                <circle cx="19" cy="12" r="1.8" />
+              </svg>
+            </button>
+            {moreMenuOpen ? (
+              <div className="watchlist-more-menu" role="menu">
+                <button
+                  className="watchlist-more-item"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    setThemesEditMode(true);
+                    document.querySelector(".research-themes")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  Edit research themes
+                </button>
+                <button
+                  className="watchlist-more-item"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    setManageSubscriptionOpen(true);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  Manage subscription
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      {subscriptionPlan ? (
-        <SubscriptionUsageBanner plan={subscriptionPlan} onManage={() => setManageSubscriptionOpen(true)} />
-      ) : null}
-
-      <section className="panel watchlist-panel">
-        <div className="panel-header positions-panel-header">
-          <div>
-            <h2>Tracked Tickers</h2>
-            <p>
-              {holdingOnly || selectedTags.length > 0
-                ? `Filtered by ${[holdingOnly ? "Holding" : null, ...selectedTags].filter(Boolean).join(" + ")}.`
-                : "All tickers in your personal watchlist."}
-            </p>
+      <div className="watchlist-pulse-row">
+        <section className="panel pulse-card" aria-label="Market Pulse">
+          <div className="pulse-card-head">
+            <h2 className="pulse-card-title">Market Pulse</h2>
+            <p>A quick read on your watchlist.</p>
           </div>
-          <div className="table-controls positions-table-controls">
-            <label className="search-field positions-search-field">
+          <div className="pulse-columns">
+            <div className="pulse-col">
+              <p className="pulse-col-label">Top Gainers</p>
+              {marketPulse.gainers.length > 0 ? (
+                marketPulse.gainers.map((entry) => (
+                  <div className="pulse-row-item" key={`g-${entry.symbol}`}>
+                    <span className="pulse-symbol">{entry.symbol}</span>
+                    <span className="pulse-change is-up">{`+${entry.change.toFixed(2)}%`}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="pulse-empty">No movers yet</p>
+              )}
+            </div>
+            <div className="pulse-col">
+              <p className="pulse-col-label">Top Losers</p>
+              {marketPulse.losers.length > 0 ? (
+                marketPulse.losers.map((entry) => (
+                  <div className="pulse-row-item" key={`l-${entry.symbol}`}>
+                    <span className="pulse-symbol">{entry.symbol}</span>
+                    <span className="pulse-change is-down">{`${entry.change.toFixed(2)}%`}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="pulse-empty">No movers yet</p>
+              )}
+            </div>
+            <div className="pulse-col">
+              <p className="pulse-col-label">Unusual Activity</p>
+              {marketPulse.unusual.length > 0 ? (
+                marketPulse.unusual.map((entry) => (
+                  <div className="pulse-row-item" key={`u-${entry.symbol}`}>
+                    <span className="pulse-symbol">{entry.symbol}</span>
+                    {entry.kind === "news" ? (
+                      <span className="pulse-tag is-news">News</span>
+                    ) : (
+                      <span className="pulse-tag is-vol">↑ Vol</span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="pulse-empty">Nothing unusual</p>
+              )}
+            </div>
+          </div>
+          <div className="pulse-foot">
+            <span className="pulse-live-dot" aria-hidden="true" />
+            Updated just now
+          </div>
+        </section>
+
+        <section className="panel realtime-card" aria-label="Realtime Market Data">
+          <div className="realtime-card-head">
+            <span className="realtime-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="14" cy="18" r="2.6" fill="currentColor" />
+                <path d="M9.5 13.5a6.4 6.4 0 0 1 9 0" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" fill="none" />
+                <path d="M6 10a11 11 0 0 1 16 0" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" fill="none" />
+              </svg>
+            </span>
+            <div>
+              <h2 className="realtime-title">Realtime Market Data</h2>
+              <p className="realtime-status">Active subscription</p>
+            </div>
+          </div>
+          <p className="realtime-count">
+            <strong>{subscriptionPlan?.subscribed_count ?? 0}</strong> / {subscriptionPlan?.max_symbols ?? 30}{" "}
+            <span>symbols</span>
+          </p>
+          <div className="realtime-bar" role="presentation">
+            <span
+              className="realtime-bar-fill"
+              style={{
+                width: `${Math.min(
+                  ((subscriptionPlan?.subscribed_count ?? 0) / Math.max(subscriptionPlan?.max_symbols ?? 30, 1)) * 100,
+                  100,
+                )}%`,
+              }}
+            />
+          </div>
+          <p className="realtime-detail">
+            Includes {autoCount} auto-subscribed from holdings
+            <br />
+            {manualCount} manually added from watchlist
+          </p>
+          <button className="realtime-manage" onClick={() => setManageSubscriptionOpen(true)} type="button">
+            Manage subscription
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
+        </section>
+      </div>
+
+      <section className="research-themes">
+        <div className="research-themes-head">
+          <h2 className="section-title">Research Themes</h2>
+          <div className="research-themes-controls">
+            <label className="search-field positions-search-field research-search">
               <span className="sr-only">Search watchlist by symbol</span>
               <span className="positions-search-shell">
                 <input
@@ -1034,61 +2012,268 @@ export function WatchlistView() {
                 />
               </span>
             </label>
+            <button
+              className={`themes-filter-toggle${holdingOnly ? " is-active" : ""}`}
+              onClick={toggleHoldingFilter}
+              title="Show holdings only"
+              type="button"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 6h16" />
+                <path d="M7 12h10" />
+                <path d="M10 18h4" />
+              </svg>
+            </button>
           </div>
         </div>
-        <div className="tag-filter" aria-label="Watchlist tag filter">
-          <div className="tag-filter-system" role="group" aria-label="System filters">
-            <button
-              aria-pressed={allFiltersCleared}
-              className={`tag-filter-button tag-filter-system-button${allFiltersCleared ? " tag-filter-button-active" : ""}`}
-              onClick={clearSelectedTags}
-              type="button"
-            >
-              All
-            </button>
-            <button
-              aria-pressed={holdingOnly}
-              className={`tag-filter-button tag-filter-system-button holding-filter-button${holdingOnly ? " tag-filter-button-active holding-filter-button-active" : ""}`}
-              onClick={toggleHoldingFilter}
-              type="button"
-            >
-              <span className="holding-filter-dot" />
-              {holdingOnly ? <span className="tag-filter-check">✓</span> : null}
-              Holding <span>{holdingCount}</span>
-            </button>
-          </div>
-          {tags.length > 0 ? <span className="tag-filter-divider" aria-hidden="true" /> : null}
-          {(tagFilterExpanded ? tags : tags.slice(0, TAG_FILTER_COLLAPSED_COUNT)).map((tag) => {
-            const selected = selectedTags.some(
-              (selectedTag) => selectedTag.toLocaleLowerCase() === tag.name.toLocaleLowerCase(),
-            );
-
-            return (
+        <div className={`tag-filter research-tag-filter${themesEditMode ? " is-editing" : ""}`} aria-label="Watchlist tag filter">
+          {!themesEditMode ? (
+            <>
               <button
-                aria-pressed={selected}
-                className={`tag-filter-button${selected ? " tag-filter-button-active" : ""}`}
-                key={tag.name}
-                onClick={() => toggleFilterTag(tag.name)}
-                style={{ backgroundColor: selected ? tag.color ?? DEFAULT_TAG_COLOR : undefined }}
+                aria-pressed={allFiltersCleared}
+                className={`tag-filter-button tag-filter-system-button${allFiltersCleared ? " tag-filter-button-active" : ""}`}
+                onClick={clearSelectedTags}
                 type="button"
               >
-                <span className="tag-filter-dot" style={{ backgroundColor: tag.color ?? DEFAULT_TAG_COLOR }} />
-                {selected ? <span className="tag-filter-check">✓</span> : null}
-                {tag.name} <span>{tag.count}</span>
+                All
               </button>
-            );
-          })}
-          {tags.length > TAG_FILTER_COLLAPSED_COUNT ? (
-            <button
-              className="tag-filter-button tag-filter-more"
-              onClick={() => setTagFilterExpanded((value) => !value)}
-              type="button"
-            >
-              {tagFilterExpanded ? "Show less" : `+${tags.length - TAG_FILTER_COLLAPSED_COUNT} more`}
+              <button
+                aria-pressed={holdingOnly}
+                className={`tag-filter-button holding-filter-button${holdingOnly ? " tag-filter-button-active holding-filter-button-active" : ""}`}
+                onClick={toggleHoldingFilter}
+                type="button"
+              >
+                Holdings <span>{holdingCount}</span>
+              </button>
+              {(tagFilterExpanded ? tags : tags.slice(0, TAG_FILTER_COLLAPSED_COUNT)).map((tag) => {
+                const selected = selectedTags.some(
+                  (selectedTag) => selectedTag.toLocaleLowerCase() === tag.name.toLocaleLowerCase(),
+                );
+                return (
+                  <button
+                    aria-pressed={selected}
+                    className={`tag-filter-button${selected ? " tag-filter-button-active" : ""}`}
+                    key={tag.name}
+                    onClick={() => toggleFilterTag(tag.name)}
+                    style={{ backgroundColor: selected ? tag.color ?? DEFAULT_TAG_COLOR : undefined }}
+                    type="button"
+                  >
+                    {selected ? <span className="tag-filter-check">✓</span> : null}
+                    {tag.name} <span>{tag.count}</span>
+                  </button>
+                );
+              })}
+              {tags.length > TAG_FILTER_COLLAPSED_COUNT ? (
+                <button
+                  className="tag-filter-button tag-filter-more"
+                  onClick={() => setTagFilterExpanded((value) => !value)}
+                  type="button"
+                >
+                  {tagFilterExpanded ? "Show less" : `+${tags.length - TAG_FILTER_COLLAPSED_COUNT} more`}
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {tags.map((tag) =>
+                renamingTagId === tag.id ? (
+                  <input
+                    key={tag.id}
+                    autoFocus
+                    className="edit-theme-rename"
+                    value={renamingTagValue}
+                    onChange={(event) => setRenamingTagValue(event.target.value)}
+                    onBlur={() => renameTagInline(tag)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        renameTagInline(tag);
+                      } else if (event.key === "Escape") {
+                        setRenamingTagId(null);
+                      }
+                    }}
+                  />
+                ) : (
+                  <span
+                    key={tag.id}
+                    className={`edit-theme-chip${dragTagId === tag.id ? " is-dragging" : ""}`}
+                    draggable
+                    onDragStart={() => setDragTagId(tag.id)}
+                    onDragEnd={() => setDragTagId(null)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => {
+                      if (dragTagId !== null) {
+                        reorderTags(dragTagId, tag.id);
+                      }
+                      setDragTagId(null);
+                    }}
+                  >
+                    <button
+                      aria-label={`Delete ${tag.name}`}
+                      className="edit-theme-del"
+                      onClick={() => deleteTagInline(tag)}
+                      type="button"
+                    >
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                    </button>
+                    <span className="edit-theme-handle" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
+                    </span>
+                    <button
+                      className="edit-theme-body"
+                      onClick={() => {
+                        setRenamingTagId(tag.id);
+                        setRenamingTagValue(tag.name);
+                      }}
+                      type="button"
+                    >
+                      <span className="edit-theme-dot" style={{ background: tag.color ?? DEFAULT_TAG_COLOR }} />
+                      {tag.name}
+                    </button>
+                  </span>
+                ),
+              )}
+            </>
+          )}
+          <span className="new-tag-wrap">
+            <button className="tag-filter-button new-tag-button" onClick={openNewTagPopover} type="button">
+              <span className="new-tag-plus" aria-hidden="true">+</span> New tag
             </button>
-          ) : null}
+            {newTagPopoverOpen ? (
+              <div className="new-tag-popover" role="dialog" aria-label="Create tag">
+                <p className="new-tag-popover-label">New tag</p>
+                <input
+                  autoFocus
+                  className="new-tag-popover-input"
+                  maxLength={20}
+                  placeholder="Tag name"
+                  value={addTagName}
+                  onChange={(event) => setAddTagName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && addTagName.trim()) {
+                      event.preventDefault();
+                      addNewTag();
+                    } else if (event.key === "Escape") {
+                      setNewTagPopoverOpen(false);
+                    }
+                  }}
+                />
+                <div className="new-tag-swatches">
+                  {TAG_COLORS.map((color) => (
+                    <button
+                      aria-label={`Colour ${color}`}
+                      className={`color-swatch${addTagColor === color ? " is-on" : ""}`}
+                      key={color}
+                      onClick={() => setAddTagColor(color)}
+                      style={{ background: color }}
+                      type="button"
+                    />
+                  ))}
+                </div>
+                <div className="new-tag-preview-row">
+                  <span className="new-tag-preview-label">Preview</span>
+                  <span className="tag-preview-chip">
+                    <span className="edit-theme-dot" style={{ background: addTagColor }} />
+                    {addTagName.trim() || "New tag"}
+                  </span>
+                </div>
+                <div className="new-tag-popover-actions">
+                  <button className="new-tag-cancel" onClick={() => setNewTagPopoverOpen(false)} type="button">
+                    Cancel
+                  </button>
+                  <button className="new-tag-popover-add" disabled={!addTagName.trim() || isSaving} onClick={addNewTag} type="button">
+                    Add tag
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </span>
         </div>
-        {filterNotice ? <p className="filter-notice">{filterNotice}</p> : null}
+        {filterNotice ? <p className="filter-notice research-filter-notice">{filterNotice}</p> : null}
+        {themesEditMode ? (
+          <p className="tag-edit-hint">Click a tag to rename · drag to reorder · ✕ to delete · “Done” when finished.</p>
+        ) : null}
+      </section>
+
+      <section className="panel watchlist-panel">
+        <div className="panel-header positions-panel-header watchlist-tracked-header">
+          <div>
+            <h2>Tracked Tickers</h2>
+            <p>
+              {holdingOnly || selectedTags.length > 0
+                ? `Filtered by ${[holdingOnly ? "Holding" : null, ...selectedTags].filter(Boolean).join(" + ")}.`
+                : "All tickers in your personal watchlist."}
+            </p>
+          </div>
+          <div className="watchlist-list-controls">
+            <div className="sort-dropdown">
+              <span className="sort-dropdown-label">Sort by</span>
+              <button
+                aria-expanded={sortMenuOpen}
+                aria-haspopup="listbox"
+                className="sort-dropdown-trigger"
+                onClick={() => setSortMenuOpen((open) => !open)}
+                type="button"
+              >
+                {SORT_LABELS[sortMode]}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {sortMenuOpen ? (
+                <div className="sort-dropdown-menu" role="listbox">
+                  {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
+                    <button
+                      className={`sort-dropdown-option${sortMode === mode ? " is-active" : ""}`}
+                      key={mode}
+                      onClick={() => {
+                        setSortMode(mode);
+                        setSortMenuOpen(false);
+                      }}
+                      role="option"
+                      aria-selected={sortMode === mode}
+                      type="button"
+                    >
+                      {SORT_LABELS[mode]}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="view-toggle" role="group" aria-label="View mode">
+              <button
+                aria-label="Grid view"
+                aria-pressed={viewMode === "grid"}
+                className={`view-toggle-btn${viewMode === "grid" ? " is-active" : ""}`}
+                onClick={() => setViewMode("grid")}
+                type="button"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </button>
+              <button
+                aria-label="List view"
+                aria-pressed={viewMode === "list"}
+                className={`view-toggle-btn${viewMode === "list" ? " is-active" : ""}`}
+                onClick={() => setViewMode("list")}
+                type="button"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M8 6h13" />
+                  <path d="M8 12h13" />
+                  <path d="M8 18h13" />
+                  <path d="M3.5 6h.01" />
+                  <path d="M3.5 12h.01" />
+                  <path d="M3.5 18h.01" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
         {error ? <ErrorState message={error} title="Watchlist request failed" /> : null}
         {isLoading ? (
           <div className="panel-state">
@@ -1105,7 +2290,7 @@ export function WatchlistView() {
                 <EmptyState message="No tickers match the selected filter." title="No matches" />
               </div>
             ) : (
-              <div className="ticker-card-grid">
+              <div className={`ticker-card-grid${viewMode === "list" ? " is-list" : ""}`}>
                 {visibleRows.map((row) => {
                   const price = priceFor(row);
                   const change = changePctFor(row);
@@ -1119,7 +2304,25 @@ export function WatchlistView() {
                       href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}?from=watchlist`}
                       key={row.id}
                       onClick={(event) => guardDetailsNavigation(row, event)}
+                      onMouseEnter={() => setHoverCard(row.id)}
+                      onMouseLeave={() => setHoverCard((current) => (current === row.id ? null : current))}
                     >
+                      <span
+                        className="ticker-card-edit"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Edit ${row.symbol}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          openEditDrawer(row);
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </span>
                       <div className="ticker-card-head">
                         <div className="ticker-card-id">
                           <strong className="ticker-card-symbol">{row.symbol}</strong>
@@ -1132,29 +2335,15 @@ export function WatchlistView() {
                         </div>
                         <SubscriptionBadge source={subscriptionSource(row)} />
                       </div>
-                      <div className="ticker-card-dots" aria-label="Tags">
-                        {row.tags.length > 0 ? (
-                          row.tags.map((tag) => (
-                            <span
-                              className="ticker-card-dot"
-                              key={tag}
-                              aria-label={tag}
-                              style={{ backgroundColor: tagColor(tag, tags) }}
-                              onMouseEnter={(event) => {
-                                const rect = event.currentTarget.getBoundingClientRect();
-                                setTagTip({ text: tag, left: rect.left + rect.width / 2, top: rect.top });
-                              }}
-                              onMouseLeave={() => setTagTip(null)}
-                            />
-                          ))
-                        ) : (
-                          <span className="ticker-card-dots-empty">No tags</span>
-                        )}
+                      <div className={`ticker-spark ${change !== null && change < 0 ? "is-down" : "is-up"}`} aria-hidden="true">
+                        <svg viewBox="0 0 100 28" preserveAspectRatio="none">
+                          <polyline points={sparkPoints(row.symbol, change === null ? true : change >= 0)} fill="none" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+                        </svg>
                       </div>
                       <div className="ticker-card-foot">
                         <span className="ticker-card-price-wrap">
                           {price === null ? (
-                            <span className="ticker-card-price is-muted">--</span>
+                            <span className="ticker-card-price is-muted">—</span>
                           ) : (
                             <span className="ticker-card-price">{`$${formatNumber(price)}`}</span>
                           )}
@@ -1170,17 +2359,299 @@ export function WatchlistView() {
                           </span>
                         ) : null}
                       </div>
+                      {row.tags.length > 0 ? (
+                        <div className="ticker-card-tags" aria-label="Tags">
+                          {row.tags.slice(0, 3).map((tag) => (
+                            <span className="ticker-card-tagpill" key={tag}>
+                              <span className="ticker-card-tagdot" style={{ backgroundColor: tagColor(tag, tags) }} />
+                              {tag}
+                            </span>
+                          ))}
+                          {row.tags.length > 3 ? <span className="ticker-card-tagmore">+{row.tags.length - 3}</span> : null}
+                        </div>
+                      ) : null}
                     </Link>
                   );
                 })}
+                {!hasMoreRows && viewMode === "grid" ? (
+                  <>
+                    <button
+                      className="ticker-card ticker-card-add"
+                      onClick={() => {
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                        openQuickAdd();
+                      }}
+                      type="button"
+                    >
+                      <span className="ticker-card-add-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 5v14" />
+                          <path d="M5 12h14" />
+                        </svg>
+                      </span>
+                      Add symbol
+                    </button>
+                    {Array.from({ length: Math.max(0, 4 - (visibleRows.length % 5 === 0 ? 4 : (visibleRows.length + 1) % 5)) }).map(
+                      (_, index) => (
+                        <div className="ticker-card ticker-card-ghost" key={`ghost-${index}`} aria-hidden="true">
+                          <svg width="46" height="26" viewBox="0 0 60 34" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M4 24l12-12 10 8 8-12 10 10 8-6" />
+                          </svg>
+                        </div>
+                      ),
+                    )}
+                  </>
+                ) : null}
               </div>
             )}
             {hasMoreRows ? (
-              <div className="ticker-card-sentinel" ref={watchlistSentinelRef} aria-hidden="true" />
+              <div className="ticker-card-loadmore">
+                <button
+                  className="load-more-button"
+                  onClick={() => setVisibleCount((current) => current + WATCHLIST_PAGE_SIZE)}
+                  type="button"
+                >
+                  Load more
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                <div className="ticker-card-sentinel" ref={watchlistSentinelRef} aria-hidden="true" />
+              </div>
             ) : null}
           </>
         )}
       </section>
+
+      <section className="research-notes">
+        <div className="research-notes-head">
+          <h2 className="section-title">Research Notes</h2>
+          <p>Organize your themes and notes.</p>
+        </div>
+        <div className="research-notes-body">
+          <div className="notes-theme-list">
+            {themes.map((theme) => {
+              const isActive = (activeTheme?.id ?? "") === theme.id;
+              return (
+                <button
+                  className={`notes-theme-item${isActive ? " is-active" : ""}`}
+                  key={theme.id}
+                  onClick={() => setActiveThemeId(theme.id)}
+                  type="button"
+                >
+                  <span className="notes-theme-name">
+                    {theme.name}
+                    {theme.starred ? <span className="notes-theme-star" aria-hidden="true">★</span> : null}
+                  </span>
+                  <span className="notes-theme-count">{theme.symbols.length} symbols</span>
+                </button>
+              );
+            })}
+            <button
+              className="notes-theme-item notes-theme-new"
+              onClick={() => {
+                document.querySelector(".research-themes")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                openNewTagPopover();
+              }}
+              type="button"
+            >
+              <span className="notes-theme-name">
+                <span className="notes-theme-plus" aria-hidden="true">+</span> New Note
+              </span>
+            </button>
+          </div>
+          {activeTheme ? (
+            <div className="notes-detail">
+              <div className="notes-detail-head">
+                <div>
+                  <h3 className="notes-detail-title">{activeTheme.name}</h3>
+                  <p className="notes-detail-sub">{activeTheme.symbols.length} symbols tracked</p>
+                </div>
+                <div className="notes-detail-meta">
+                  <span className="notes-detail-updated">Updated {activeTheme.updated}</span>
+                  <span className="notes-detail-dots" aria-hidden="true">•••</span>
+                </div>
+              </div>
+              <div className="notes-detail-symbols">
+                {activeTheme.symbols.map((symbol) => (
+                  <span className="notes-symbol-pill" key={symbol}>
+                    {symbol}
+                  </span>
+                ))}
+              </div>
+              <div className="notes-detail-divider" aria-hidden="true" />
+              <p className="notes-detail-summary">{activeTheme.summary}</p>
+              {activeTheme.bullets.length > 0 ? (
+                <ul className="notes-detail-bullets">
+                  {activeTheme.bullets.map((bullet, index) => (
+                    <li key={index}>{bullet}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <svg className="notes-detail-star" width="70" height="70" viewBox="0 0 80 80" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M40 14 L46 34 L66 34 L50 46 L56 66 L40 54 L24 66 L30 46 L14 34 L34 34 Z" />
+              </svg>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <div className="watchlist-tip">
+        <span className="watchlist-tip-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3 L14 9 L20 9 L15 13 L17 19 L12 15 L7 19 L9 13 L4 9 L10 9 Z" />
+          </svg>
+        </span>
+        <p>
+          <strong>Tip:</strong> Use themes to group your ideas and track market narratives.
+        </p>
+        <button
+          className="watchlist-tip-link"
+          onClick={() => document.querySelector(".research-themes")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          type="button"
+        >
+          Learn more
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M7 17 17 7" />
+            <path d="M8 7h9v9" />
+          </svg>
+        </button>
+      </div>
+
+      {/* ---- Structured symbol drawer (add stage 2 + edit) ---- */}
+      {drawerOpen
+        ? (() => {
+            const dSymbol = (drawerMode === "edit" ? drawerItem?.symbol : drawerResult?.symbol) ?? "";
+            const upper = dSymbol.toUpperCase();
+            const dName =
+              drawerMode === "edit"
+                ? symbolMeta[upper]?.name ?? drawerItem?.display_name ?? null
+                : drawerResult?.name ?? null;
+            const dExch = drawerMode === "edit" ? symbolMeta[upper]?.exchange ?? null : drawerResult?.exchange ?? null;
+            const dQuote = DEMO_PRICE[upper];
+            const editPrice = drawerMode === "edit" && drawerItem ? priceFor(drawerItem) : null;
+            const editChange = drawerMode === "edit" && drawerItem ? changePctFor(drawerItem) : null;
+            const showPrice = dQuote ? dQuote.price : editPrice !== null ? Number(editPrice) : null;
+            const showChange = dQuote ? dQuote.change : editChange;
+            return (
+              <div className="wl-drawer-overlay" onMouseDown={() => setDrawerOpen(false)} role="presentation">
+                <aside
+                  className="wl-drawer"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={drawerMode === "edit" ? "Edit symbol" : "Add symbol"}
+                >
+                  <div className="wl-drawer-head">
+                    <h2 className="wl-drawer-title">{drawerMode === "edit" ? "Edit symbol" : "Add to watchlist"}</h2>
+                    <button className="wl-close-btn" aria-label="Close" onClick={() => setDrawerOpen(false)} type="button">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                    </button>
+                  </div>
+                  <div className="wl-drawer-body">
+                    <div className="wl-review-symbol">
+                      <span className="wl-sug-logo wl-review-logo">{dSymbol.slice(0, 2)}</span>
+                      <span className="wl-sug-main">
+                        <span className="wl-sug-top">
+                          <strong>{dSymbol}</strong>
+                          <span className="wl-sug-name">{dName ?? "—"}</span>
+                        </span>
+                        <span className="wl-sug-exch">{dExch ?? "—"}</span>
+                      </span>
+                      {showPrice !== null ? (
+                        <span className="wl-sug-quote">
+                          <span className="wl-sug-price">{`$${showPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+                          {showChange !== null && showChange !== undefined ? (
+                            <span className={`wl-sug-change ${showChange >= 0 ? "is-up" : "is-down"}`}>
+                              {`${showChange >= 0 ? "+" : ""}${showChange.toFixed(2)}%`}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="wl-field">
+                      <span className="wl-field-label">Tags</span>
+                      <div className="wl-search-wrap">
+                        <svg className="wl-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <circle cx="11" cy="11" r="7" />
+                          <path d="M21 21l-4.3-4.3" />
+                        </svg>
+                        <input
+                          className="wl-input wl-search-input"
+                          placeholder="Search or create tag"
+                          value={drawerTagQuery}
+                          onChange={(event) => setDrawerTagQuery(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && drawerTagQuery.trim()) {
+                              event.preventDefault();
+                              createTagForDrawer();
+                            }
+                          }}
+                        />
+                        {drawerTagQuery.trim() && !tags.some((t) => t.name.toLocaleLowerCase() === drawerTagQuery.trim().toLocaleLowerCase()) ? (
+                          <button className="wl-create-tag" onClick={createTagForDrawer} type="button">
+                            Create “{drawerTagQuery.trim()}”
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="wl-tag-chips">
+                        {tags
+                          .filter((tag) => !drawerTagQuery.trim() || tag.name.toLocaleLowerCase().includes(drawerTagQuery.trim().toLocaleLowerCase()))
+                          .map((tag) => {
+                            const on = drawerTags.some((t) => t.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
+                            return (
+                              <button
+                                className={`wl-tag-chip${on ? " is-on" : ""}`}
+                                key={tag.id}
+                                onClick={() => toggleDrawerTag(tag.name)}
+                                type="button"
+                              >
+                                {on ? <span className="wl-tag-check">✓</span> : null}
+                                {tag.name}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+
+                    <div className="wl-field">
+                      <span className="wl-field-label">Add to</span>
+                      <label className={`wl-radio${!createNewList ? " is-on" : ""}`}>
+                        <input type="radio" checked={!createNewList} onChange={() => setCreateNewList(false)} name="wl-drawer-list" />
+                        <span className="wl-radio-dot" />
+                        My watchlist
+                      </label>
+                      <label className={`wl-radio${createNewList ? " is-on" : ""}`}>
+                        <input type="radio" checked={createNewList} onChange={() => setCreateNewList(true)} name="wl-drawer-list" />
+                        <span className="wl-radio-dot" />
+                        Create new watchlist
+                      </label>
+                      {createNewList ? (
+                        <input
+                          className="wl-input wl-newlist-input"
+                          placeholder="e.g. Long-term portfolio"
+                          value={newListName}
+                          onChange={(event) => setNewListName(event.target.value)}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="wl-drawer-foot">
+                    {drawerMode === "edit" ? (
+                      <button className="wl-remove-btn" disabled={isSaving} onClick={removeFromDrawer} type="button">
+                        Remove
+                      </button>
+                    ) : null}
+                    <button className="action-button wl-full-btn" disabled={isSaving} onClick={confirmDrawer} type="button">
+                      {drawerMode === "edit" ? "Save changes" : "Add to watchlist"}
+                    </button>
+                  </div>
+                </aside>
+              </div>
+            );
+          })()
+        : null}
 
       <BaseModal
         className="manage-subscription-modal"
@@ -1240,422 +2711,6 @@ export function WatchlistView() {
           <span>
             <span className="legend-dot legend-dot-none" /> Delayed only
           </span>
-        </div>
-      </BaseModal>
-
-      <BaseModal
-        className="manage-watchlist-modal"
-        description="Add tickers and organise them with custom tags — all in one place."
-        isOpen={manageOpen}
-        onClose={closeManage}
-        title="Manage watchlist"
-      >
-        <div className="manage-tabs" role="tablist">
-          <button
-            aria-selected={manageTab === "tickers"}
-            className={`manage-tab${manageTab === "tickers" ? " is-active" : ""}`}
-            onClick={() => setManageTab("tickers")}
-            role="tab"
-            type="button"
-          >
-            <span className="manage-tab-icon" aria-hidden="true">☰</span>
-            Tickers
-            <span className="manage-tab-count">{items?.length ?? 0}</span>
-          </button>
-          <button
-            aria-selected={manageTab === "tags"}
-            className={`manage-tab${manageTab === "tags" ? " is-active" : ""}`}
-            onClick={() => setManageTab("tags")}
-            role="tab"
-            type="button"
-          >
-            <span className="manage-tab-icon" aria-hidden="true">🏷</span>
-            Tags
-            <span className="manage-tab-count">{tags.length}</span>
-          </button>
-        </div>
-
-        <div className="manage-watchlist-body scroll-area">
-        {manageTab === "tickers" ? (
-        <div className="ticker-manager">
-          <form className="ticker-add-form" onSubmit={addTicker}>
-            <div className="ticker-field">
-              <span className="ticker-field-label">Symbol</span>
-              <div className="symbol-search-field">
-                <input
-                  autoFocus
-                  aria-autocomplete="list"
-                  aria-expanded={symbolSearchOpen}
-                  onBlur={() => {
-                    window.setTimeout(() => setSymbolSearchOpen(false), 120);
-                  }}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, symbol: event.target.value.toUpperCase() }));
-                    setSymbolSearchOpen(Boolean(event.target.value.trim()));
-                  }}
-                  onFocus={() => {
-                    if (form.symbol.trim()) {
-                      setSymbolSearchOpen(true);
-                    }
-                  }}
-                  placeholder="e.g. NVTS"
-                  value={form.symbol}
-                />
-                {symbolSearchOpen ? (
-                  <div className="symbol-search-menu" role="listbox">
-                    <div className="symbol-search-scroll">
-                      {isSymbolSearching ? <div className="symbol-search-status">Searching symbols...</div> : null}
-                      {symbolSearchError ? <div className="symbol-search-status symbol-search-error">{symbolSearchError}</div> : null}
-                      {!isSymbolSearching && !symbolSearchError && symbolResults.length === 0 ? (
-                        <div className="symbol-search-status">No matching symbols</div>
-                      ) : null}
-                      {symbolResults.map((result) => {
-                        const alreadyAdded = watchlistSymbolSet.has(result.symbol.toUpperCase());
-                        return (
-                          <button
-                            className={`symbol-search-option${alreadyAdded ? " is-added" : ""}`}
-                            key={`${result.symbol}-${result.exchange ?? "unknown"}`}
-                            disabled={alreadyAdded}
-                            aria-disabled={alreadyAdded}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              if (alreadyAdded) {
-                                return;
-                              }
-                              selectSymbolResult(result);
-                            }}
-                            role="option"
-                            type="button"
-                          >
-                            <span className="symbol-search-option-main">
-                              <strong>{result.symbol}</strong>
-                              {result.is_etf ? <span className="symbol-search-etf">ETF</span> : null}
-                              {alreadyAdded ? <span className="symbol-search-added">Added</span> : null}
-                            </span>
-                            <span className="symbol-search-option-name">{result.name ?? "Unnamed symbol"}</span>
-                            <span className="symbol-search-option-exchange">{result.exchange ?? "Unknown exchange"}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="ticker-field">
-              <span className="ticker-field-label">Select tags</span>
-              <div className="select-tags-row">
-                {tags.map((tag) => {
-                  const selected = form.selectedTags.some(
-                    (name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase(),
-                  );
-                  return (
-                    <button
-                      aria-pressed={selected}
-                      className={`select-tag-pill${selected ? " is-selected" : ""}`}
-                      key={tag.id}
-                      onClick={() => toggleAddFormTag(tag.name)}
-                      type="button"
-                    >
-                      {tag.name}
-                    </button>
-                  );
-                })}
-                {form.selectedTags
-                  .filter((name) => !tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
-                  .map((name) => (
-                    <button
-                      aria-pressed
-                      className="select-tag-pill is-selected"
-                      key={`new-${name}`}
-                      onClick={() => toggleAddFormTag(name)}
-                      type="button"
-                    >
-                      {name}
-                    </button>
-                  ))}
-                {newTagOpen ? (
-                  <input
-                    autoFocus
-                    className="select-tag-input"
-                    onBlur={() => {
-                      if (form.newTag.trim()) {
-                        addNewFormTag();
-                      }
-                      setNewTagOpen(false);
-                    }}
-                    onChange={(event) => setForm((current) => ({ ...current, newTag: event.target.value }))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addNewFormTag();
-                      } else if (event.key === "Escape") {
-                        setForm((current) => ({ ...current, newTag: "" }));
-                        setNewTagOpen(false);
-                      }
-                    }}
-                    placeholder="Tag name"
-                    value={form.newTag}
-                  />
-                ) : (
-                  <button
-                    className="select-tag-pill select-tag-pill-new"
-                    onClick={() => setNewTagOpen(true)}
-                    type="button"
-                  >
-                    + New tag…
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <label className="ticker-field">
-              <span className="ticker-field-label">Notes (optional)</span>
-              <input
-                onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="e.g. CPO supply chain watch"
-                value={form.notes}
-              />
-            </label>
-
-            {dialogError ? <p className="form-error">{dialogError}</p> : null}
-
-            <button className="action-button ticker-add-submit" disabled={isSaving} type="submit">
-              Add to watchlist
-            </button>
-          </form>
-
-          <section className="ticker-existing">
-            <p className="ticker-existing-label">Existing tickers</p>
-            <p className="ticker-existing-help">
-              Delete removes only the watchlist entry. Imported IBKR data is kept. Held positions are locked.
-            </p>
-            {items && items.length > 0 ? (
-              <div className="ticker-existing-list">
-                {items.slice(0, tickerRenderLimit).map((item) => (
-                  <div className="ticker-row" key={item.id}>
-                    <div className="ticker-row-main">
-                      <div className="ticker-row-head">
-                        <strong>{item.symbol}</strong>
-                        {item.has_position ? (
-                          <>
-                            <span className="ticker-row-holding">Holding</span>
-                            <span
-                              className="ticker-row-ibkr"
-                              title="Held positions sync from IBKR and can't be removed."
-                            >
-                              🔒 IBKR
-                            </span>
-                          </>
-                        ) : (
-                          <span className="ticker-row-noposition">No position</span>
-                        )}
-                      </div>
-                      {item.tags.length > 0 ? (
-                        <div className="ticker-row-tags">
-                          {item.tags.map((tag) => (
-                            <span
-                              className="tag-pill soft-chip watchlist-table-tag"
-                              key={tag}
-                              style={{ backgroundColor: tagColor(tag, tags) }}
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="ticker-row-actions">
-                      <button
-                        aria-label={`Edit ${item.symbol}`}
-                        className="icon-action"
-                        disabled={isSaving}
-                        onClick={() => startManagedTickerEdit(item)}
-                        title="Edit ticker"
-                        type="button"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        aria-label={`Delete ${item.symbol}`}
-                        className="icon-action"
-                        disabled={isSaving || item.has_position}
-                        onClick={() => deleteTicker(item.symbol)}
-                        title={
-                          item.has_position
-                            ? "Held positions sync from IBKR and can't be removed."
-                            : "Delete ticker (keeps imported IBKR data)"
-                        }
-                        type="button"
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {tickerRenderLimit < items.length ? (
-                  <div className="ticker-existing-sentinel" ref={tickerSentinelRef} aria-hidden="true" />
-                ) : null}
-              </div>
-            ) : (
-              <span className="tag-editor-empty">No tickers tracked yet.</span>
-            )}
-          </section>
-        </div>
-        ) : null}
-
-        {manageTab === "tags" ? (
-        <div className="tag-manager">
-          <section className="tag-manager-section">
-            <span className="ticker-field-label">Add tags</span>
-            <form className="tag-add-row" onSubmit={addTags}>
-              <input
-                onChange={(event) => setTagForm(event.target.value)}
-                placeholder="CPO, Optical, AI Infra"
-                value={tagForm}
-              />
-              <button className="action-button" disabled={isSaving} type="submit">
-                Add tags
-              </button>
-            </form>
-          </section>
-
-          <section className="tag-manager-section">
-            <span className="ticker-field-label">System filters</span>
-            <div className="tag-system-banner">
-              <span className="tag-system-lock" aria-hidden="true">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-              </span>
-              <div className="tag-system-body">
-                <div className="tag-system-pills">
-                  <span className="tag-system-pill">All</span>
-                  <span className="tag-system-pill">Holding</span>
-                </div>
-                <p>Built-in, can&apos;t be renamed or deleted.</p>
-              </div>
-            </div>
-          </section>
-
-          <section className="tag-manager-section">
-            <span className="ticker-field-label">Custom tags</span>
-            <p className="tag-manager-help">
-              Deleting a tag is global: it&apos;s removed from every ticker, but the tickers stay.
-            </p>
-            {tags.length > 0 ? (
-              <div className="tag-pill-list">
-                {tags.map((tag) =>
-                  editingTagId === tag.id ? (
-                    <span className="tag-manage-pill is-editing" key={tag.id}>
-                      <input
-                        autoFocus
-                        className="tag-manage-pill-input"
-                        onChange={(event) => setEditingTagName(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            saveTagEdit(tag.id);
-                          } else if (event.key === "Escape") {
-                            setEditingTagId(null);
-                          }
-                        }}
-                        value={editingTagName}
-                      />
-                      <button
-                        aria-label="Save tag name"
-                        className="tag-manage-pill-act"
-                        disabled={isSaving}
-                        onClick={() => saveTagEdit(tag.id)}
-                        title="Save"
-                        type="button"
-                      >
-                        ✓
-                      </button>
-                      <button
-                        aria-label="Cancel rename"
-                        className="tag-manage-pill-act"
-                        disabled={isSaving}
-                        onClick={() => setEditingTagId(null)}
-                        title="Cancel"
-                        type="button"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ) : (
-                    <span className="tag-manage-pill-wrap" key={tag.id}>
-                      <button
-                        aria-expanded={tagMenu?.id === tag.id}
-                        aria-haspopup="menu"
-                        aria-label={`Tag ${tag.name} options`}
-                        className={`tag-pill soft-chip watchlist-table-tag tag-manage-pill tag-manage-pill-trigger${tagMenu?.id === tag.id ? " is-open" : ""}`}
-                        disabled={isSaving}
-                        onClick={(event) => toggleTagMenu(tag.id, event)}
-                        style={{ backgroundColor: tagColor(tag.name, tags) }}
-                        type="button"
-                      >
-                        <span className="tag-manage-pill-name">{tag.name}</span>
-                        <span className="tag-manage-pill-count">{tag.count}</span>
-                        <span className="tag-manage-pill-caret" aria-hidden="true">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M6 9l6 6 6-6" />
-                          </svg>
-                        </span>
-                      </button>
-                      {tagMenu?.id === tag.id ? (
-                        <div
-                          className="tag-menu-popover"
-                          role="menu"
-                          aria-label={`${tag.name} actions`}
-                          style={{ left: tagMenu.left, top: tagMenu.top }}
-                        >
-                          <button
-                            className="tag-menu-item"
-                            disabled={isSaving}
-                            onClick={() => startTagEdit(tag)}
-                            role="menuitem"
-                            type="button"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                            </svg>
-                            Rename
-                          </button>
-                          <button
-                            className="tag-menu-item tag-menu-item-danger"
-                            disabled={isSaving}
-                            onClick={() => {
-                              setTagMenu(null);
-                              deleteGlobalTag(tag);
-                            }}
-                            role="menuitem"
-                            type="button"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <path d="M3 6h18" />
-                              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            </svg>
-                            Delete
-                          </button>
-                        </div>
-                      ) : null}
-                    </span>
-                  ),
-                )}
-              </div>
-            ) : (
-              <span className="tag-editor-empty">No custom tags yet.</span>
-            )}
-          </section>
-
-          {dialogError ? <p className="form-error">{dialogError}</p> : null}
-        </div>
-        ) : null}
         </div>
       </BaseModal>
 
