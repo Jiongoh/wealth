@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -6,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models import CashReport, LotAnalysisDaily, NavDaily, RawFlexReport
+from app.models import CashReport, LotAnalysisDaily, NavDaily, RawFlexReport, Trade
 from app.schemas import (
     ExternalCashFlow,
     NavDailyResponse,
@@ -142,6 +143,9 @@ def get_daily_performance(
         for report_date, raw_flex_report_id in latest_cash_reports.items()
     }
 
+    base_currency = _single_value(row.currency for row in nav_rows)
+    fx_rates = _fx_rates_to_base(db, base_currency)
+
     response: list[PortfolioPerformanceDailyResponse] = []
     previous_date: date | None = None
     previous_nav: Decimal | None = None
@@ -154,17 +158,22 @@ def get_daily_performance(
         flows = _external_cash_flows(cash_rows_by_date.get(report_date, []))
         # Daily performance is the change in NAV with external cash flows removed.
         # Buying/selling holdings is NAV-neutral, so trades correctly do not count
-        # as performance; only deposits/withdrawals are subtracted out. We can only
-        # subtract base-currency flows, so a day with a foreign-currency flow we
-        # can't convert reports no performance (rather than a corrupted value);
-        # the flow itself is still shown natively via `external_cash_flows`.
-        base_cash_flow = sum(
-            (amount for currency, amount in flows if currency == nav.currency),
-            Decimal("0"),
-        )
-        has_unconvertible_flow = any(currency != nav.currency for currency, _ in flows)
+        # as performance; only deposits/withdrawals are subtracted out. Foreign-
+        # currency flows are converted to the base currency using rates derived
+        # from FX-conversion trades; a flow whose currency has no known rate leaves
+        # the day's performance unavailable (the flow is still shown natively).
+        total_cash_flow_base = Decimal("0")
+        has_unconvertible_flow = False
+        for currency, amount in flows:
+            converted = _convert_flow_to_base(
+                amount, currency, report_date, base_currency, fx_rates
+            )
+            if converted is None:
+                has_unconvertible_flow = True
+            else:
+                total_cash_flow_base += converted
         if current_nav is not None and previous_nav is not None and not has_unconvertible_flow:
-            performance_amount = current_nav - previous_nav - base_cash_flow
+            performance_amount = current_nav - previous_nav - total_cash_flow_base
             performance_pct = (
                 performance_amount / previous_nav if previous_nav > 0 else None
             )
@@ -178,7 +187,7 @@ def get_daily_performance(
                 nav=current_nav,
                 previous_date=previous_date,
                 previous_nav=previous_nav,
-                external_cash_flow=base_cash_flow,
+                external_cash_flow=total_cash_flow_base,
                 external_cash_flows=[
                     ExternalCashFlow(currency=currency, amount=amount)
                     for currency, amount in flows
@@ -300,6 +309,77 @@ def _external_cash_flows(rows: list[CashReport]) -> list[tuple[str | None, Decim
             continue
         totals[row.currency] = totals.get(row.currency, Decimal("0")) + flow
     return [(currency, amount) for currency, amount in totals.items() if amount != 0]
+
+
+_FX_PAIR = re.compile(r"^([A-Z]{3})\.([A-Z]{3})$")
+
+
+def _fx_rates_to_base(
+    db: Session, base_currency: str | None
+) -> dict[str, list[tuple[date, Decimal]]]:
+    """Per-currency (trade_date, rate-to-base) points derived from IBKR FX
+    conversion trades (e.g. ``USD.CNH``).
+
+    IBKR quotes an FX pair as ``BASE.QUOTE`` with ``trade_price`` in units of the
+    quote currency per one base unit, so ``USD.CNH`` at 6.80 means 1 USD = 6.80
+    CNH and the CNH->USD rate is ``1 / 6.80``. These rates let us express
+    foreign-currency cash flows in the NAV base currency.
+    """
+    if not base_currency:
+        return {}
+
+    base = base_currency.upper()
+    rows = db.scalars(
+        select(Trade).where(Trade.symbol.is_not(None), Trade.trade_price.is_not(None))
+    ).all()
+    rates: dict[str, list[tuple[date, Decimal]]] = {}
+    for row in rows:
+        match = _FX_PAIR.match((row.symbol or "").upper())
+        if match is None:
+            continue
+        left, right = match.group(1), match.group(2)
+        price = row.trade_price
+        on_date = row.trade_date or row.report_date
+        if price is None or price == 0 or on_date is None:
+            continue
+        if left == base and right != base:
+            foreign, rate = right, Decimal(1) / price
+        elif right == base and left != base:
+            foreign, rate = left, price
+        else:
+            continue
+        rates.setdefault(foreign, []).append((on_date, rate))
+    for points in rates.values():
+        points.sort(key=lambda item: item[0])
+    return rates
+
+
+def _convert_flow_to_base(
+    amount: Decimal,
+    currency: str | None,
+    on_date: date,
+    base_currency: str | None,
+    fx_rates: dict[str, list[tuple[date, Decimal]]],
+) -> Decimal | None:
+    """Convert a cash flow to the base currency, or None if no rate is known."""
+    if base_currency is None:
+        return amount if currency is None else None
+    if currency is None or currency.upper() == base_currency.upper():
+        return amount
+
+    points = fx_rates.get(currency.upper())
+    if not points:
+        return None
+
+    # Use the most recent rate on or before the flow date; fall back to the
+    # earliest known rate. FX rates move little day to day, so this is safe.
+    rate = points[0][1]
+    for point_date, point_rate in points:
+        if point_date <= on_date:
+            rate = point_rate
+        else:
+            break
+    return amount * rate
 
 
 def _validate_date_range(start_date: date | None, end_date: date | None) -> None:

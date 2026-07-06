@@ -476,7 +476,7 @@ class QueryApiTest(unittest.TestCase):
             [{"currency": "USD", "amount": "10.0000000000"}],
         )
 
-    def test_portfolio_performance_reports_foreign_currency_cash_flow(self) -> None:
+    def test_portfolio_performance_foreign_flow_without_fx_rate_is_null(self) -> None:
         with self.session_factory() as db:
             first_report = RawFlexReport(
                 query_id="fx-performance-test",
@@ -533,6 +533,77 @@ class QueryApiTest(unittest.TestCase):
         self.assertEqual(Decimal(day["external_cash_flow"]), Decimal("0"))
         self.assertIsNone(day["performance_amount"])
         self.assertIsNone(day["performance_pct"])
+        self.assertEqual(
+            day["external_cash_flows"],
+            [{"currency": "CNH", "amount": "1000.0000000000"}],
+        )
+
+    def test_portfolio_performance_converts_foreign_flow_via_fx_trade(self) -> None:
+        with self.session_factory() as db:
+            first_report = RawFlexReport(
+                query_id="fx-rate-test",
+                xml_path=str(FIXTURE_PATH),
+                xml_sha256="fx-rate-first",
+                downloaded_at=datetime(2026, 2, 1, tzinfo=UTC),
+                status="parsed",
+            )
+            second_report = RawFlexReport(
+                query_id="fx-rate-test",
+                xml_path=str(FIXTURE_PATH),
+                xml_sha256="fx-rate-second",
+                downloaded_at=datetime(2026, 2, 2, tzinfo=UTC),
+                status="parsed",
+            )
+            db.add_all([first_report, second_report])
+            db.flush()
+            db.add_all(
+                [
+                    NavDaily(
+                        report_date=date(2026, 1, 30),
+                        account_id="TEST_ACCOUNT",
+                        currency="USD",
+                        total=Decimal("100"),
+                        raw_flex_report_id=first_report.id,
+                    ),
+                    NavDaily(
+                        report_date=date(2026, 1, 31),
+                        account_id="TEST_ACCOUNT",
+                        currency="USD",
+                        total=Decimal("200"),
+                        raw_flex_report_id=second_report.id,
+                    ),
+                    # 1000 CNH deposit; a USD.CNH conversion at 10 CNH/USD means it
+                    # is worth 100 USD, so it is subtracted from the +100 NAV change
+                    # and the day's performance is 0.
+                    CashReport(
+                        report_date=date(2026, 1, 31),
+                        account_id="TEST_ACCOUNT",
+                        currency="CNH",
+                        level_of_detail="Currency",
+                        deposit_withdrawals=Decimal("1000"),
+                        raw_flex_report_id=second_report.id,
+                    ),
+                    Trade(
+                        report_date=date(2026, 1, 31),
+                        trade_date=date(2026, 1, 31),
+                        account_id="TEST_ACCOUNT",
+                        currency="CNH",
+                        asset_class="CASH",
+                        symbol="USD.CNH",
+                        trade_price=Decimal("10"),
+                        quantity=Decimal("100"),
+                        raw_flex_report_id=second_report.id,
+                    ),
+                ]
+            )
+            db.commit()
+
+        rows = self.client.get("/api/portfolio/performance/daily").json()
+        day = rows[1]
+        self.assertEqual(day["date"], "2026-01-31")
+        # 1000 CNH / 10 = 100 USD; performance = (200 - 100) - 100 = 0.
+        self.assertEqual(Decimal(day["external_cash_flow"]), Decimal("100"))
+        self.assertEqual(Decimal(day["performance_amount"]), Decimal("0"))
         self.assertEqual(
             day["external_cash_flows"],
             [{"currency": "CNH", "amount": "1000.0000000000"}],
