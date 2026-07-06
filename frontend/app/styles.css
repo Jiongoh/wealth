@@ -9308,9 +9308,10 @@ body:has(.dashboard-page) {
   gap: 12px;
   padding: 14px;
   position: absolute;
-  right: 0;
+  left: 0;
   top: calc(100% + 10px);
   width: 340px;
+  max-width: min(340px, calc(100vw - 40px));
   z-index: 70;
   animation: wl-pop-in 140ms ease-out;
 }
@@ -9449,3 +9450,31 @@ body:has(.dashboard-page) {
   padding: 12px 18px;
 }
 .wl-remove-btn:hover:not(:disabled) { background: rgba(198, 69, 69, 0.08); }
+
+/* Edit-themes mode: delete "×" (and lock for holdings) at the card's top-right. */
+.ticker-card-del,
+.ticker-card-lock {
+  align-items: center;
+  border-radius: 50%;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 22px;
+  z-index: 4;
+}
+.ticker-card-del {
+  background: #c64545;
+  border: 1.5px solid var(--surface);
+  box-shadow: 0 2px 6px rgba(20, 20, 19, 0.2);
+  color: #fff;
+  cursor: pointer;
+}
+.ticker-card-del:hover { background: #b23b3b; }
+.ticker-card-lock {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}

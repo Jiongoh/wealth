@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BaseModal } from "@/components/BaseModal";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -48,8 +48,54 @@ const WATCHLIST_PAGE_SIZE = 24;
 // Existing-tickers list lazy-loads in batches as the modal scrolls (no nested scrollbar).
 const TICKER_PAGE_INCREMENT = 12;
 const DEFAULT_TAG_COLOR = "#F7DFA6";
-// Warm palette for the "Add new tag" colour picker (DESIGN.md tones).
-const TAG_COLORS = ["#cc785c", "#e8a55a", "#e3b341", "#5db872", "#5db8a6", "#6c8fd6", "#a884d4", "#8e8b82"];
+// A wide, hue-spread palette so tag colours are auto-assigned (no manual picker)
+// with strong visual separation. Ordered so adjacent entries contrast; a colour
+// only repeats after the whole palette (14) is used, never after a few tags.
+const TAG_COLORS = [
+  "#cc785c", // coral
+  "#5db872", // green
+  "#6c8fd6", // blue
+  "#e3b341", // amber
+  "#a884d4", // purple
+  "#5db8a6", // teal
+  "#d47b8f", // rose
+  "#a3b35a", // olive
+  "#cf7bad", // magenta
+  "#5aa8bf", // cyan
+  "#e0955a", // orange
+  "#7b7fd0", // indigo
+  "#a98a6b", // taupe
+  "#8e8b82", // slate
+];
+
+// Re-colour a list of tags from the palette by position, so the set is evenly
+// spread and stable across reloads (index-based, not order-sensitive per render).
+function recolorTags(list: WatchlistTag[]): WatchlistTag[] {
+  return list.map((tag, index) => ({ ...tag, color: TAG_COLORS[index % TAG_COLORS.length] }));
+}
+
+// Pick the palette colour used by the fewest existing tags (ties → earliest in
+// the palette). Guarantees a new tag gets a maximally-distinct colour and that
+// nothing repeats until every palette colour has been used at least once.
+function pickTagColor(existing: WatchlistTag[]): string {
+  const counts = new Map<string, number>(TAG_COLORS.map((color) => [color, 0]));
+  for (const tag of existing) {
+    if (tag.color && counts.has(tag.color)) {
+      counts.set(tag.color, (counts.get(tag.color) ?? 0) + 1);
+    }
+  }
+  let best = TAG_COLORS[0];
+  let bestCount = Infinity;
+  for (const color of TAG_COLORS) {
+    const count = counts.get(color) ?? 0;
+    if (count < bestCount) {
+      bestCount = count;
+      best = color;
+    }
+  }
+  return best;
+}
+
 const EMPTY_TICKER_FORM: TickerForm = { symbol: "", displayName: "", selectedTags: [], newTag: "", notes: "" };
 
 // Header-less panel modal — the design's management surfaces supply their own
@@ -528,6 +574,50 @@ export function WatchlistView() {
   const [newListName, setNewListName] = useState("");
   // Hover-revealed edit control per card.
   const [hoverCard, setHoverCard] = useState<number | null>(null);
+  // Long-press (1.5s) on any tag/ticker is a secondary way to enter Edit themes.
+  const longPressRef = useRef<number | null>(null);
+  const longPressFiredRef = useRef(false);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  function beginLongPress(action: () => void) {
+    cancelLongPress();
+    longPressFiredRef.current = false;
+    longPressRef.current = window.setTimeout(() => {
+      longPressFiredRef.current = true;
+      action();
+    }, 1500);
+  }
+  function cancelLongPress() {
+    if (longPressRef.current !== null) {
+      window.clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
+  }
+  // Robust press-and-hold for a draggable <a> card: capture the pointer so a
+  // little cursor drift can't fire pointerleave and cancel the timer, and only
+  // cancel on a real move (scroll/drag) beyond a small threshold.
+  function startCardLongPress(event: ReactPointerEvent) {
+    longPressStartRef.current = { x: event.clientX, y: event.clientY };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* not all pointers support capture */
+    }
+    beginLongPress(enterThemesEditFromLongPress);
+  }
+  function moveCardLongPress(event: ReactPointerEvent) {
+    const start = longPressStartRef.current;
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) {
+      cancelLongPress();
+    }
+  }
+  // Enter Edit themes mode and bring the themes row into view (used from the
+  // 1.5s long-press on a tag or a ticker card).
+  function enterThemesEditFromLongPress() {
+    setThemesEditMode(true);
+    setRenamingTagId(null);
+    setNewTagPopoverOpen(false);
+  }
 
   async function loadWatchlist() {
     setIsLoading(true);
@@ -535,14 +625,14 @@ export function WatchlistView() {
     try {
       const [nextItems, nextTags] = await Promise.all([api.watchlist(), api.watchlistTags()]);
       setItems(nextItems);
-      setTags(nextTags);
+      setTags(recolorTags(nextTags));
     } catch (requestError: unknown) {
       // Local preview with no backend: fall back to the demo dataset instead of
       // an error so the page still renders. (See DEMO_* above.)
       console.warn("Watchlist API unavailable, using demo data:", requestError);
       setIsDemo(true);
       setItems(DEMO_ITEMS);
-      setTags(DEMO_TAGS);
+      setTags(recolorTags(DEMO_TAGS));
       // Seed name + exchange so cards render fully without the /symbols endpoint,
       // and mark them requested so the lazy meta effect doesn't overwrite with null.
       Object.keys(DEMO_META).forEach((symbol) => symbolMetaRequestedRef.current.add(symbol));
@@ -676,7 +766,7 @@ export function WatchlistView() {
       if (!target.closest(".watchlist-more")) {
         setMoreMenuOpen(false);
       }
-      if (!target.closest(".hero-add-wrap")) {
+      if (!target.closest(".add-ticker-wrap")) {
         setQuickAddOpen(false);
       }
       if (!target.closest(".new-tag-wrap")) {
@@ -967,7 +1057,8 @@ export function WatchlistView() {
   // API and reload.
   function openNewTagPopover() {
     setAddTagName("");
-    setAddTagColor(TAG_COLORS[0]);
+    // Auto-assign a distinct colour (no manual picker) — least-used in the palette.
+    setAddTagColor(pickTagColor(tags));
     setNewTagPopoverOpen(true);
   }
 
@@ -1137,7 +1228,7 @@ export function WatchlistView() {
     if (!tags.some((t) => t.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
       if (isDemo) {
         const maxId = tags.reduce((m, t) => Math.max(m, t.id), 0);
-        setTags((current) => [...current, { id: maxId + 1, name, count: 0, color: TAG_COLORS[(maxId + 1) % TAG_COLORS.length] }]);
+        setTags((current) => [...current, { id: maxId + 1, name, count: 0, color: pickTagColor(current) }]);
       } else {
         try {
           setTags(await api.createWatchlistTags([name]));
@@ -1224,29 +1315,6 @@ export function WatchlistView() {
     }
   }
 
-  async function removeFromDrawer() {
-    if (!drawerItem) {
-      return;
-    }
-    const symbol = drawerItem.symbol;
-    if (isDemo) {
-      setItems((current) => (current ?? []).filter((it) => it.id !== drawerItem.id));
-      setDrawerOpen(false);
-      setToast({ message: `Removed ${symbol}.`, tone: "success" });
-      return;
-    }
-    setIsSaving(true);
-    try {
-      await api.deleteWatchlistTicker(symbol);
-      await loadWatchlist();
-      setDrawerOpen(false);
-      setToast({ message: `Removed ${symbol}.`, tone: "success" });
-    } catch (requestError: unknown) {
-      setToast({ message: requestError instanceof Error ? requestError.message : `Couldn't remove ${symbol}.`, tone: "error" });
-    } finally {
-      setIsSaving(false);
-    }
-  }
 
   function startEdit(row: WatchlistItem) {
     setEditingSymbol(row.symbol);
@@ -1705,6 +1773,78 @@ export function WatchlistView() {
     ? Math.max(subscriptionPlan.subscribed_count - subscriptionPlan.holdings_count, 0)
     : 0;
 
+  // Stage-1 quick-add popover, anchored to the in-grid "Add symbol" card.
+  const quickAddPopover = quickAddOpen ? (
+    <div className="quick-add-popover" role="dialog" aria-label="Quick add symbol">
+      <div className="wl-search-wrap">
+        <svg className="wl-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M21 21l-4.3-4.3" />
+        </svg>
+        <input
+          autoFocus
+          className="wl-input wl-search-input"
+          placeholder="Search symbol — e.g. NVDA"
+          value={form.symbol}
+          onChange={(event) => setForm((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))}
+        />
+      </div>
+      <div className="quick-add-list">
+        {isSymbolSearching ? <div className="symbol-search-status">Searching…</div> : null}
+        {symbolSearchError ? <div className="symbol-search-status symbol-search-error">{symbolSearchError}</div> : null}
+        {!form.symbol.trim() ? <div className="symbol-search-status">Type a ticker or company name.</div> : null}
+        {form.symbol.trim() && !isSymbolSearching && symbolResults.length === 0 ? (
+          <div className="symbol-search-status">No matching symbols</div>
+        ) : null}
+        {symbolResults.slice(0, 6).map((result) => {
+          const alreadyAdded = watchlistSymbolSet.has(result.symbol.toUpperCase());
+          const quote = DEMO_PRICE[result.symbol.toUpperCase()];
+          return (
+            <button
+              className={`wl-sug${alreadyAdded ? " is-added" : ""}`}
+              disabled={alreadyAdded}
+              key={`${result.symbol}-${result.exchange ?? "x"}`}
+              onClick={() => chooseSymbolForDrawer(result)}
+              type="button"
+            >
+              <span className="wl-sug-logo">{result.symbol.slice(0, 2)}</span>
+              <span className="wl-sug-main">
+                <span className="wl-sug-top">
+                  <strong>{result.symbol}</strong>
+                  <span className="wl-sug-name">{result.name ?? "Unnamed"}</span>
+                  {alreadyAdded ? <span className="wl-sug-added">Added</span> : null}
+                </span>
+                <span className="wl-sug-exch">{result.exchange ?? "—"}</span>
+              </span>
+              {quote ? <span className="wl-sug-price">{`$${quote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      {tags.length > 0 ? (
+        <div className="quick-add-tags-block">
+          <span className="quick-add-tags-label">Quick tags (optional)</span>
+          <div className="quick-add-tags">
+            {tags.slice(0, 8).map((tag) => {
+              const on = quickAddTags.some((t) => t.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
+              return (
+                <button
+                  className={`wl-tag-chip${on ? " is-on" : ""}`}
+                  key={tag.id}
+                  onClick={() => toggleQuickTag(tag.name)}
+                  type="button"
+                >
+                  {on ? <span className="wl-tag-check">✓</span> : null}
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <>
       {toast ? (
@@ -1772,85 +1912,6 @@ export function WatchlistView() {
               </>
             )}
           </button>
-          <div className="hero-add-wrap">
-            <button className="action-button hero-add-btn" onClick={quickAddOpen ? () => setQuickAddOpen(false) : openQuickAdd} type="button">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
-              </svg>
-              Add symbol
-            </button>
-            {quickAddOpen ? (
-              <div className="quick-add-popover" role="dialog" aria-label="Quick add symbol">
-                <div className="wl-search-wrap">
-                  <svg className="wl-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="M21 21l-4.3-4.3" />
-                  </svg>
-                  <input
-                    autoFocus
-                    className="wl-input wl-search-input"
-                    placeholder="Search symbol — e.g. NVDA"
-                    value={form.symbol}
-                    onChange={(event) => setForm((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))}
-                  />
-                </div>
-                <div className="quick-add-list">
-                  {isSymbolSearching ? <div className="symbol-search-status">Searching…</div> : null}
-                  {symbolSearchError ? <div className="symbol-search-status symbol-search-error">{symbolSearchError}</div> : null}
-                  {!form.symbol.trim() ? <div className="symbol-search-status">Type a ticker or company name.</div> : null}
-                  {form.symbol.trim() && !isSymbolSearching && symbolResults.length === 0 ? (
-                    <div className="symbol-search-status">No matching symbols</div>
-                  ) : null}
-                  {symbolResults.slice(0, 6).map((result) => {
-                    const alreadyAdded = watchlistSymbolSet.has(result.symbol.toUpperCase());
-                    const quote = DEMO_PRICE[result.symbol.toUpperCase()];
-                    return (
-                      <button
-                        className={`wl-sug${alreadyAdded ? " is-added" : ""}`}
-                        disabled={alreadyAdded}
-                        key={`${result.symbol}-${result.exchange ?? "x"}`}
-                        onClick={() => chooseSymbolForDrawer(result)}
-                        type="button"
-                      >
-                        <span className="wl-sug-logo">{result.symbol.slice(0, 2)}</span>
-                        <span className="wl-sug-main">
-                          <span className="wl-sug-top">
-                            <strong>{result.symbol}</strong>
-                            <span className="wl-sug-name">{result.name ?? "Unnamed"}</span>
-                            {alreadyAdded ? <span className="wl-sug-added">Added</span> : null}
-                          </span>
-                          <span className="wl-sug-exch">{result.exchange ?? "—"}</span>
-                        </span>
-                        {quote ? <span className="wl-sug-price">{`$${quote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-                {tags.length > 0 ? (
-                  <div className="quick-add-tags-block">
-                    <span className="quick-add-tags-label">Quick tags (optional)</span>
-                    <div className="quick-add-tags">
-                      {tags.slice(0, 8).map((tag) => {
-                        const on = quickAddTags.some((t) => t.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
-                        return (
-                          <button
-                            className={`wl-tag-chip${on ? " is-on" : ""}`}
-                            key={tag.id}
-                            onClick={() => toggleQuickTag(tag.name)}
-                            type="button"
-                          >
-                            {on ? <span className="wl-tag-check">✓</span> : null}
-                            {tag.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
           <div className="watchlist-more">
             <button
               aria-label="More options"
@@ -2054,7 +2115,16 @@ export function WatchlistView() {
                     aria-pressed={selected}
                     className={`tag-filter-button${selected ? " tag-filter-button-active" : ""}`}
                     key={tag.name}
-                    onClick={() => toggleFilterTag(tag.name)}
+                    onPointerDown={() => beginLongPress(enterThemesEditFromLongPress)}
+                    onPointerUp={cancelLongPress}
+                    onPointerLeave={cancelLongPress}
+                    onClick={() => {
+                      if (longPressFiredRef.current) {
+                        longPressFiredRef.current = false;
+                        return;
+                      }
+                      toggleFilterTag(tag.name);
+                    }}
                     style={{ backgroundColor: selected ? tag.color ?? DEFAULT_TAG_COLOR : undefined }}
                     type="button"
                   >
@@ -2122,6 +2192,13 @@ export function WatchlistView() {
                     <button
                       className="edit-theme-body"
                       onClick={() => {
+                        // Swallow the release click that follows a long-press
+                        // (which just entered this edit mode), so it doesn't
+                        // immediately open rename.
+                        if (longPressFiredRef.current) {
+                          longPressFiredRef.current = false;
+                          return;
+                        }
                         setRenamingTagId(tag.id);
                         setRenamingTagValue(tag.name);
                       }}
@@ -2158,18 +2235,6 @@ export function WatchlistView() {
                     }
                   }}
                 />
-                <div className="new-tag-swatches">
-                  {TAG_COLORS.map((color) => (
-                    <button
-                      aria-label={`Colour ${color}`}
-                      className={`color-swatch${addTagColor === color ? " is-on" : ""}`}
-                      key={color}
-                      onClick={() => setAddTagColor(color)}
-                      style={{ background: color }}
-                      type="button"
-                    />
-                  ))}
-                </div>
                 <div className="new-tag-preview-row">
                   <span className="new-tag-preview-label">Preview</span>
                   <span className="tag-preview-chip">
@@ -2303,26 +2368,72 @@ export function WatchlistView() {
                       className="ticker-card"
                       href={`/details/${encodeURIComponent(row.symbol.toUpperCase())}?from=watchlist`}
                       key={row.id}
-                      onClick={(event) => guardDetailsNavigation(row, event)}
+                      draggable={false}
+                      onPointerDown={startCardLongPress}
+                      onPointerMove={moveCardLongPress}
+                      onPointerUp={cancelLongPress}
+                      onPointerCancel={cancelLongPress}
+                      onClick={(event) => {
+                        if (longPressFiredRef.current) {
+                          longPressFiredRef.current = false;
+                          event.preventDefault();
+                          return;
+                        }
+                        // While Edit themes is active, a card click opens its
+                        // edit drawer instead of navigating to details.
+                        if (themesEditMode) {
+                          event.preventDefault();
+                          openEditDrawer(row);
+                          return;
+                        }
+                        guardDetailsNavigation(row, event);
+                      }}
                       onMouseEnter={() => setHoverCard(row.id)}
                       onMouseLeave={() => setHoverCard((current) => (current === row.id ? null : current))}
                     >
-                      <span
-                        className="ticker-card-edit"
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Edit ${row.symbol}`}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          openEditDrawer(row);
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 20h9" />
-                          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                        </svg>
-                      </span>
+                      {themesEditMode ? (
+                        row.has_position ? (
+                          <span className="ticker-card-lock" title="Held positions sync from IBKR and can't be removed." aria-hidden="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="4" y="11" width="16" height="9" rx="2" />
+                              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                            </svg>
+                          </span>
+                        ) : (
+                          <span
+                            className="ticker-card-del"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Remove ${row.symbol}`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              deleteTicker(row.symbol);
+                            }}
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round">
+                              <path d="M6 6l12 12M18 6L6 18" />
+                            </svg>
+                          </span>
+                        )
+                      ) : (
+                        <span
+                          className="ticker-card-edit"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Edit ${row.symbol}`}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            openEditDrawer(row);
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                          </svg>
+                        </span>
+                      )}
                       <div className="ticker-card-head">
                         <div className="ticker-card-id">
                           <strong className="ticker-card-symbol">{row.symbol}</strong>
@@ -2375,22 +2486,22 @@ export function WatchlistView() {
                 })}
                 {!hasMoreRows && viewMode === "grid" ? (
                   <>
-                    <button
-                      className="ticker-card ticker-card-add"
-                      onClick={() => {
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                        openQuickAdd();
-                      }}
-                      type="button"
-                    >
-                      <span className="ticker-card-add-icon" aria-hidden="true">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 5v14" />
-                          <path d="M5 12h14" />
-                        </svg>
-                      </span>
-                      Add symbol
-                    </button>
+                    <div className="add-ticker-wrap">
+                      <button
+                        className={`ticker-card ticker-card-add${quickAddOpen ? " is-open" : ""}`}
+                        onClick={() => (quickAddOpen ? setQuickAddOpen(false) : openQuickAdd())}
+                        type="button"
+                      >
+                        <span className="ticker-card-add-icon" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 5v14" />
+                            <path d="M5 12h14" />
+                          </svg>
+                        </span>
+                        Add symbol
+                      </button>
+                      {quickAddPopover}
+                    </div>
                     {Array.from({ length: Math.max(0, 4 - (visibleRows.length % 5 === 0 ? 4 : (visibleRows.length + 1) % 5)) }).map(
                       (_, index) => (
                         <div className="ticker-card ticker-card-ghost" key={`ghost-${index}`} aria-hidden="true">
@@ -2615,34 +2726,31 @@ export function WatchlistView() {
                       </div>
                     </div>
 
-                    <div className="wl-field">
-                      <span className="wl-field-label">Add to</span>
-                      <label className={`wl-radio${!createNewList ? " is-on" : ""}`}>
-                        <input type="radio" checked={!createNewList} onChange={() => setCreateNewList(false)} name="wl-drawer-list" />
-                        <span className="wl-radio-dot" />
-                        My watchlist
-                      </label>
-                      <label className={`wl-radio${createNewList ? " is-on" : ""}`}>
-                        <input type="radio" checked={createNewList} onChange={() => setCreateNewList(true)} name="wl-drawer-list" />
-                        <span className="wl-radio-dot" />
-                        Create new watchlist
-                      </label>
-                      {createNewList ? (
-                        <input
-                          className="wl-input wl-newlist-input"
-                          placeholder="e.g. Long-term portfolio"
-                          value={newListName}
-                          onChange={(event) => setNewListName(event.target.value)}
-                        />
-                      ) : null}
-                    </div>
+                    {drawerMode === "add" ? (
+                      <div className="wl-field">
+                        <span className="wl-field-label">Add to</span>
+                        <label className={`wl-radio${!createNewList ? " is-on" : ""}`}>
+                          <input type="radio" checked={!createNewList} onChange={() => setCreateNewList(false)} name="wl-drawer-list" />
+                          <span className="wl-radio-dot" />
+                          My watchlist
+                        </label>
+                        <label className={`wl-radio${createNewList ? " is-on" : ""}`}>
+                          <input type="radio" checked={createNewList} onChange={() => setCreateNewList(true)} name="wl-drawer-list" />
+                          <span className="wl-radio-dot" />
+                          Create new watchlist
+                        </label>
+                        {createNewList ? (
+                          <input
+                            className="wl-input wl-newlist-input"
+                            placeholder="e.g. Long-term portfolio"
+                            value={newListName}
+                            onChange={(event) => setNewListName(event.target.value)}
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="wl-drawer-foot">
-                    {drawerMode === "edit" ? (
-                      <button className="wl-remove-btn" disabled={isSaving} onClick={removeFromDrawer} type="button">
-                        Remove
-                      </button>
-                    ) : null}
                     <button className="action-button wl-full-btn" disabled={isSaving} onClick={confirmDrawer} type="button">
                       {drawerMode === "edit" ? "Save changes" : "Add to watchlist"}
                     </button>
