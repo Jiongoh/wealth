@@ -8014,6 +8014,8 @@ body:has(.dashboard-page) {
 
 .realtime-bar-manual {
   background: var(--sub-manual);
+  /* Round the trailing end to match the bar's pill radius. */
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
 }
 
 .realtime-detail {
@@ -8335,275 +8337,20 @@ body:has(.dashboard-page) {
   color: var(--text-muted);
 }
 
-/* --- Research Notes ---------------------------------------------------- */
-.research-notes {
-  margin-top: 26px;
-}
-
-.research-notes-head {
-  margin-bottom: 15px;
-}
-
-.research-notes-head p {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin-top: 5px;
-}
-
-.research-notes-body {
-  display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(220px, 0.5fr) 1fr;
-}
-
-.notes-theme-list {
-  background: linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 10px 26px rgba(60, 44, 36, 0.06), inset 0 1px 0 rgba(255, 253, 247, 0.58);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 8px;
-}
-
-.notes-theme-item {
-  align-items: center;
-  background: none;
-  border: 0;
-  border-radius: 13px;
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  padding: 13px 15px;
-  text-align: left;
-  transition: background 0.16s ease;
-  width: 100%;
-}
-
-.notes-theme-item:hover {
-  background: var(--surface-hover);
-}
-
-.notes-theme-item.is-active {
-  background: rgba(204, 120, 92, 0.2);
-}
-
-.notes-theme-name {
-  align-items: center;
-  color: var(--text);
-  display: flex;
-  font-size: 14px;
-  font-weight: 600;
-  gap: 7px;
-}
-
-.notes-theme-item.is-active .notes-theme-name {
-  color: #8a4a33;
-}
-
-.notes-theme-star {
-  color: var(--accent-deep);
-  font-size: 13px;
-}
-
-.notes-theme-count {
-  color: var(--text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.notes-theme-new {
-  border-top: 1px dashed rgba(138, 74, 51, 0.14);
-  border-radius: 0;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-.notes-theme-new .notes-theme-name {
-  color: var(--text-muted);
-  font-weight: 560;
-}
-
-.notes-theme-plus {
-  color: var(--accent-deep);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.notes-detail {
-  background: linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 10px 26px rgba(60, 44, 36, 0.06), inset 0 1px 0 rgba(255, 253, 247, 0.58);
-  overflow: hidden;
-  padding: 22px 26px 24px;
-  position: relative;
-}
-
-.notes-detail-head {
-  align-items: flex-start;
-  display: flex;
-  justify-content: space-between;
-}
-
-.notes-detail-title {
-  font-size: 17px;
-  font-weight: 640;
-  letter-spacing: -0.02em;
-}
-
-.notes-detail-sub {
-  color: var(--text-muted);
-  font-size: 12.5px;
-  margin-top: 4px;
-}
-
-.notes-detail-meta {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-}
-
-.notes-detail-updated {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.notes-detail-dots {
-  color: var(--text-muted);
-  font-size: 13px;
-  letter-spacing: 1px;
-}
-
-.notes-detail-symbols {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.notes-symbol-pill {
-  background: var(--surface-muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 620;
-  padding: 5px 12px;
-}
-
-.notes-detail-divider {
-  border-top: 1px dashed rgba(138, 74, 51, 0.14);
-  margin: 18px 0 16px;
-}
-
-.notes-detail-summary {
-  color: var(--text);
-  font-size: 13.5px;
-  line-height: 1.6;
-  max-width: 560px;
-}
-
-.notes-detail-bullets {
-  color: var(--text-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  list-style: none;
-  margin: 16px 0 0;
-  padding: 0;
-}
-
-.notes-detail-bullets li {
-  font-size: 13px;
-  line-height: 1.5;
-  padding-left: 18px;
-  position: relative;
-}
-
-.notes-detail-bullets li::before {
-  background: var(--accent-deep);
-  border-radius: 50%;
-  content: "";
-  height: 5px;
-  left: 3px;
-  position: absolute;
-  top: 8px;
-  width: 5px;
-}
-
-.notes-detail-star {
-  bottom: 18px;
-  color: rgba(169, 88, 62, 0.32);
-  position: absolute;
-  right: 22px;
-}
-
-/* --- Tip banner -------------------------------------------------------- */
-.watchlist-tip {
-  align-items: center;
-  background: linear-gradient(145deg, rgba(204, 120, 92, 0.16), rgba(204, 120, 92, 0.08));
-  border: 1px solid rgba(169, 88, 62, 0.24);
-  border-radius: var(--radius-md);
-  display: flex;
-  gap: 12px;
-  margin-top: 24px;
-  padding: 14px 20px;
-}
-
-.watchlist-tip-icon {
-  color: var(--accent-deep);
-  line-height: 0;
-}
-
-.watchlist-tip p {
-  color: var(--text);
-  flex: 1;
-  font-size: 13px;
-}
-
-.watchlist-tip p strong {
-  font-weight: 680;
-}
-
-.watchlist-tip-link {
-  align-items: center;
-  background: none;
-  border: 0;
-  color: var(--accent-deep);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 13px;
-  font-weight: 640;
-  gap: 5px;
-}
-
-.watchlist-tip-link:hover {
-  text-decoration: underline;
-}
-
 @media (max-width: 900px) {
-  .watchlist-pulse-row,
-  .research-notes-body {
+  .watchlist-pulse-row {
     grid-template-columns: 1fr;
   }
 }
 
 /* Card hover: gradient border + slight lift on all Watchlist cards. */
 .pulse-card,
-.realtime-card,
-.notes-detail,
-.notes-theme-list {
+.realtime-card {
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
 .pulse-card:hover,
-.realtime-card:hover,
-.notes-detail:hover,
-.notes-theme-list:hover {
+.realtime-card:hover {
   border: 1px solid transparent;
   background:
     linear-gradient(145deg, var(--surface), rgba(255, 253, 247, 0.92)) padding-box,
@@ -8820,7 +8567,15 @@ body:has(.dashboard-page) {
 
 /* --- Inline "Add symbol" popover --------------------------------------- */
 .add-ticker-wrap {
+  display: flex;
   position: relative;
+}
+
+/* The wrapper is the grid cell; let the button fill it, and give it a full
+   card min-height so its row lines up with the populated ticker cards. */
+.add-ticker-wrap > .ticker-card-add {
+  flex: 1;
+  min-height: 226px;
 }
 
 .ticker-card-add.is-open {
@@ -9486,4 +9241,25 @@ body:has(.dashboard-page) {
   background: var(--surface-muted);
   border: 1px solid var(--border);
   color: var(--text-muted);
+}
+
+/* Page footnote — data attribution (mirrors the Positions .pp-footnote style). */
+.watchlist-footnote {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 28px;
+  text-align: center;
+}
+
+.watchlist-footnote-logo {
+  display: inline-block;
+  height: 15px;
+  position: relative;
+  top: -1px;
+  vertical-align: middle;
+  width: auto;
 }
