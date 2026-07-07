@@ -232,17 +232,6 @@ function tagColor(tag: string, tags: WatchlistTag[]): string {
   return tags.find((item) => item.name.toLocaleLowerCase() === tag.toLocaleLowerCase())?.color ?? DEFAULT_TAG_COLOR;
 }
 
-// Research Notes: a theme groups a few tracked symbols with a short thesis.
-type ResearchTheme = {
-  id: string;
-  name: string;
-  symbols: string[];
-  starred: boolean;
-  updated: string;
-  summary: string;
-  bullets: string[];
-};
-
 type SortMode = "recent" | "symbol" | "price" | "change";
 type ViewMode = "grid" | "list";
 
@@ -397,57 +386,6 @@ const DEMO_PRICE: Record<string, { price: number; change: number }> = {
   META: { price: 505.6, change: 1.44 },
 };
 
-const DEMO_THEMES: ResearchTheme[] = [
-  {
-    id: "memory",
-    name: "Memory Theme",
-    symbols: ["MU", "DRAM", "SNDK", "SPCX"],
-    starred: true,
-    updated: "2h ago",
-    summary:
-      "Demand remains strong for HBM and enterprise storage. Watching pricing trends and inventory digestion in Q2.",
-    bullets: [
-      "Micron guiding higher on data center demand",
-      "NAND pricing stabilized in May",
-      "HBM supply still constrained",
-    ],
-  },
-  {
-    id: "ai-infra",
-    name: "AI Infrastructure",
-    symbols: ["MRVL", "NBIS", "AAOI"],
-    starred: false,
-    updated: "1d ago",
-    summary:
-      "Custom silicon and optical interconnect are the picks-and-shovels of the AI buildout. Tracking hyperscaler capex.",
-    bullets: [
-      "Marvell custom ASIC ramp accelerating",
-      "Optical DSP demand outpacing supply",
-      "Neocloud capacity fully committed",
-    ],
-  },
-  {
-    id: "cloud",
-    name: "Cloud Expansion",
-    symbols: ["NBIS", "QQQM"],
-    starred: false,
-    updated: "3d ago",
-    summary:
-      "GPU-as-a-service capacity is selling out ahead of delivery. Margins depend on utilization and power access.",
-    bullets: ["Nebius signing multi-year contracts", "Power availability the key bottleneck"],
-  },
-  {
-    id: "optics",
-    name: "Optics & Photonics",
-    symbols: ["LITE", "COHR"],
-    starred: false,
-    updated: "5d ago",
-    summary:
-      "800G/1.6T transceiver cycle is inflecting. Watching indium phosphide capacity and datacom mix shift.",
-    bullets: ["1.6T qualification underway", "Datacom mix lifting gross margin"],
-  },
-];
-
 // Deterministic mini-trend sparkline points for a symbol (seeded by ticker so it
 // stays stable across renders). Drifts up or down to match the day's change sign.
 function sparkPoints(seed: string, up: boolean): string {
@@ -469,32 +407,6 @@ function sparkPoints(seed: string, up: boolean): string {
     points.push(`${((i / (n - 1)) * width).toFixed(1)},${y.toFixed(1)}`);
   }
   return points.join(" ");
-}
-
-// Build the Research Notes theme list from real tags + items; fall back to the
-// demo set when there is nothing meaningful to show.
-function deriveThemes(items: WatchlistItem[], tags: WatchlistTag[]): ResearchTheme[] {
-  const derived = tags
-    .map((tag) => {
-      const members = items.filter((item) =>
-        item.tags.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase()),
-      );
-      const notes = members.map((member) => member.notes?.trim()).filter((note): note is string => Boolean(note));
-      return {
-        id: `tag-${tag.id}`,
-        name: tag.name,
-        symbols: members.map((member) => member.symbol),
-        starred: false,
-        updated: "recently",
-        summary:
-          notes[0] ??
-          `Tracking ${members.length} ${members.length === 1 ? "symbol" : "symbols"} under the ${tag.name} theme.`,
-        bullets: notes.slice(0, 3),
-      };
-    })
-    .filter((theme) => theme.symbols.length > 0)
-    .sort((a, b) => b.symbols.length - a.symbols.length);
-  return derived.length > 0 ? derived : DEMO_THEMES;
 }
 
 export function WatchlistView() {
@@ -538,7 +450,6 @@ export function WatchlistView() {
   const [sortMode, setSortMode] = useState<SortMode>("recent");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
   // True when the backend was unreachable and we rendered the demo dataset.
   const [isDemo, setIsDemo] = useState(false);
   const [newTagOpen, setNewTagOpen] = useState(false);
@@ -1759,14 +1670,6 @@ export function WatchlistView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, quotes, subscribedSet]);
 
-  const themes = useMemo(
-    () => (isDemo ? DEMO_THEMES : deriveThemes(items ?? [], tags)),
-    [isDemo, items, tags],
-  );
-  const activeTheme = useMemo(
-    () => themes.find((theme) => theme.id === activeThemeId) ?? themes[0] ?? null,
-    [themes, activeThemeId],
-  );
 
   const autoCount = subscriptionPlan?.holdings_count ?? 0;
   const manualCount = subscriptionPlan
@@ -2533,100 +2436,11 @@ export function WatchlistView() {
         )}
       </section>
 
-      <section className="research-notes">
-        <div className="research-notes-head">
-          <h2 className="section-title">Research Notes</h2>
-          <p>Organize your themes and notes.</p>
-        </div>
-        <div className="research-notes-body">
-          <div className="notes-theme-list">
-            {themes.map((theme) => {
-              const isActive = (activeTheme?.id ?? "") === theme.id;
-              return (
-                <button
-                  className={`notes-theme-item${isActive ? " is-active" : ""}`}
-                  key={theme.id}
-                  onClick={() => setActiveThemeId(theme.id)}
-                  type="button"
-                >
-                  <span className="notes-theme-name">
-                    {theme.name}
-                    {theme.starred ? <span className="notes-theme-star" aria-hidden="true">★</span> : null}
-                  </span>
-                  <span className="notes-theme-count">{theme.symbols.length} symbols</span>
-                </button>
-              );
-            })}
-            <button
-              className="notes-theme-item notes-theme-new"
-              onClick={() => {
-                document.querySelector(".research-themes")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                openNewTagPopover();
-              }}
-              type="button"
-            >
-              <span className="notes-theme-name">
-                <span className="notes-theme-plus" aria-hidden="true">+</span> New Note
-              </span>
-            </button>
-          </div>
-          {activeTheme ? (
-            <div className="notes-detail">
-              <div className="notes-detail-head">
-                <div>
-                  <h3 className="notes-detail-title">{activeTheme.name}</h3>
-                  <p className="notes-detail-sub">{activeTheme.symbols.length} symbols tracked</p>
-                </div>
-                <div className="notes-detail-meta">
-                  <span className="notes-detail-updated">Updated {activeTheme.updated}</span>
-                  <span className="notes-detail-dots" aria-hidden="true">•••</span>
-                </div>
-              </div>
-              <div className="notes-detail-symbols">
-                {activeTheme.symbols.map((symbol) => (
-                  <span className="notes-symbol-pill" key={symbol}>
-                    {symbol}
-                  </span>
-                ))}
-              </div>
-              <div className="notes-detail-divider" aria-hidden="true" />
-              <p className="notes-detail-summary">{activeTheme.summary}</p>
-              {activeTheme.bullets.length > 0 ? (
-                <ul className="notes-detail-bullets">
-                  {activeTheme.bullets.map((bullet, index) => (
-                    <li key={index}>{bullet}</li>
-                  ))}
-                </ul>
-              ) : null}
-              <svg className="notes-detail-star" width="70" height="70" viewBox="0 0 80 80" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M40 14 L46 34 L66 34 L50 46 L56 66 L40 54 L24 66 L30 46 L14 34 L34 34 Z" />
-              </svg>
-            </div>
-          ) : null}
-        </div>
-      </section>
-
-      <div className="watchlist-tip">
-        <span className="watchlist-tip-icon" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 3 L14 9 L20 9 L15 13 L17 19 L12 15 L7 19 L9 13 L4 9 L10 9 Z" />
-          </svg>
-        </span>
-        <p>
-          <strong>Tip:</strong> Use themes to group your ideas and track market narratives.
-        </p>
-        <button
-          className="watchlist-tip-link"
-          onClick={() => document.querySelector(".research-themes")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          type="button"
-        >
-          Learn more
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M7 17 17 7" />
-            <path d="M8 7h9v9" />
-          </svg>
-        </button>
-      </div>
+      <p className="watchlist-footnote">
+        Symbol data provided by
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img alt="Nasdaq" className="watchlist-footnote-logo" src="/NASDAQ_Logo.svg" />
+      </p>
 
       {/* ---- Structured symbol drawer (add stage 2 + edit) ---- */}
       {drawerOpen
