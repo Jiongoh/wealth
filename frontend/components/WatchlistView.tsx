@@ -2035,13 +2035,12 @@ export function WatchlistView() {
           </p>
           <div className="realtime-bar" role="presentation">
             <span
-              className="realtime-bar-fill"
-              style={{
-                width: `${Math.min(
-                  ((subscriptionPlan?.subscribed_count ?? 0) / Math.max(subscriptionPlan?.max_symbols ?? 30, 1)) * 100,
-                  100,
-                )}%`,
-              }}
+              className="realtime-bar-auto"
+              style={{ width: `${Math.min((autoCount / Math.max(subscriptionPlan?.max_symbols ?? 30, 1)) * 100, 100)}%` }}
+            />
+            <span
+              className="realtime-bar-manual"
+              style={{ width: `${Math.min((manualCount / Math.max(subscriptionPlan?.max_symbols ?? 30, 1)) * 100, 100)}%` }}
             />
           </div>
           <p className="realtime-detail">

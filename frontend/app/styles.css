@@ -7994,17 +7994,26 @@ body:has(.dashboard-page) {
 .realtime-bar {
   background: var(--sub-none-soft);
   border-radius: var(--radius-pill);
+  display: flex;
   height: 8px;
   margin: 12px 0 14px;
   overflow: hidden;
 }
 
-.realtime-bar-fill {
-  background: linear-gradient(90deg, #e3a992, #cc785c);
-  border-radius: var(--radius-pill);
-  display: block;
+/* Two segments: auto-subscribed (holdings) keeps the coral fill; manually
+   added (watchlist) uses a distinct light tone. */
+.realtime-bar-auto,
+.realtime-bar-manual {
   height: 100%;
   transition: width 0.3s ease;
+}
+
+.realtime-bar-auto {
+  background: linear-gradient(90deg, #e3a992, #cc785c);
+}
+
+.realtime-bar-manual {
+  background: var(--sub-manual);
 }
 
 .realtime-detail {
