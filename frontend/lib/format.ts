@@ -56,6 +56,20 @@ export function formatDisplayDateTime(value: string | null | undefined): string 
   );
 }
 
+export function formatDisplayTime(value: string | null | undefined): string {
+  if (!value) {
+    return "--";
+  }
+
+  return (
+    formatDate(new Date(value), {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }) ?? value
+  );
+}
+
 export function formatShortDisplayDate(value: string | null | undefined): string {
   if (!value) {
     return "--";
