@@ -470,7 +470,6 @@ export function WatchlistView() {
   const [newTagPopoverOpen, setNewTagPopoverOpen] = useState(false);
   const [addTagName, setAddTagName] = useState("");
   const [addTagColor, setAddTagColor] = useState<string>(TAG_COLORS[0]);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   // SYMBOLS — Stage 1: a quick-add popover (search + optional quick tags).
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddTags, setQuickAddTags] = useState<string[]>([]);
@@ -664,18 +663,15 @@ export function WatchlistView() {
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [sortMenuOpen]);
 
-  // Close the header "···" menu and the lightweight popovers on outside click.
+  // Close the lightweight popovers on outside click.
   useEffect(() => {
-    if (!moreMenuOpen && !quickAddOpen && !newTagPopoverOpen) {
+    if (!quickAddOpen && !newTagPopoverOpen) {
       return;
     }
     function handlePointerDown(event: globalThis.MouseEvent) {
       const target = event.target as HTMLElement | null;
       if (!target) {
         return;
-      }
-      if (!target.closest(".watchlist-more")) {
-        setMoreMenuOpen(false);
       }
       if (!target.closest(".add-ticker-wrap")) {
         setQuickAddOpen(false);
@@ -686,7 +682,7 @@ export function WatchlistView() {
     }
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [moreMenuOpen, quickAddOpen, newTagPopoverOpen]);
+  }, [quickAddOpen, newTagPopoverOpen]);
 
   // Reset the lazy-load window whenever the modal opens or the Tickers tab is shown.
   useEffect(() => {
@@ -1815,49 +1811,6 @@ export function WatchlistView() {
               </>
             )}
           </button>
-          <div className="watchlist-more">
-            <button
-              aria-label="More options"
-              aria-haspopup="menu"
-              aria-expanded={moreMenuOpen}
-              className="hero-more-btn"
-              onClick={() => setMoreMenuOpen((open) => !open)}
-              type="button"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <circle cx="5" cy="12" r="1.8" />
-                <circle cx="12" cy="12" r="1.8" />
-                <circle cx="19" cy="12" r="1.8" />
-              </svg>
-            </button>
-            {moreMenuOpen ? (
-              <div className="watchlist-more-menu" role="menu">
-                <button
-                  className="watchlist-more-item"
-                  onClick={() => {
-                    setMoreMenuOpen(false);
-                    setThemesEditMode(true);
-                    document.querySelector(".research-themes")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  Edit research themes
-                </button>
-                <button
-                  className="watchlist-more-item"
-                  onClick={() => {
-                    setMoreMenuOpen(false);
-                    setManageSubscriptionOpen(true);
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  Manage subscription
-                </button>
-              </div>
-            ) : null}
-          </div>
         </div>
       </div>
 
