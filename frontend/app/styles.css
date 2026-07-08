@@ -9236,6 +9236,13 @@ body:has(.dashboard-page) {
   flex-shrink: 0;
   min-width: 300px;
   padding: 20px 22px 18px;
+  position: relative;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.trades-latest-card:hover {
+  box-shadow: 0 18px 38px rgba(24, 23, 21, 0.22), inset 0 1px 0 rgba(255, 253, 247, 0.08);
+  transform: translateY(-3px);
 }
 
 .trades-latest-head {
@@ -9331,7 +9338,9 @@ body:has(.dashboard-page) {
 /* Card hover: gradient border ring + slight lift (mirrors the dashboard
    calendar card's .dperf-panel hover treatment). */
 .trades-stat-card::after,
-.trades-filter-controls::after {
+.trades-filter-controls::after,
+.trades-latest-card::after,
+.trades-timeline-card::after {
   background: linear-gradient(135deg, #efe9de 0%, #d97757 70%, #e3a992 100%);
   border-radius: inherit;
   content: "";
@@ -9355,7 +9364,9 @@ body:has(.dashboard-page) {
 }
 
 .trades-stat-card:hover::after,
-.trades-filter-controls:hover::after {
+.trades-filter-controls:hover::after,
+.trades-latest-card:hover::after,
+.trades-timeline-card:hover::after {
   opacity: 1;
 }
 
@@ -9422,9 +9433,10 @@ body:has(.dashboard-page) {
 }
 
 .trades-filter-controls {
-  background: #faf8f5;
+  background: #f1e8dd;
   border: 1px solid #e6dfd8;
   border-radius: var(--radius-lg);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -9447,7 +9459,7 @@ body:has(.dashboard-page) {
 
 .trades-dropdown {
   align-items: center;
-  background: var(--surface);
+  background: #faf8f5;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text);
@@ -9509,9 +9521,9 @@ body:has(.dashboard-page) {
 }
 
 .trades-side-toggle {
-  background: var(--surface);
+  background: #faf8f5;
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   display: flex;
   gap: 2px;
   padding: 3px;
@@ -9520,7 +9532,7 @@ body:has(.dashboard-page) {
 .trades-side-btn {
   background: transparent;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
   flex: 1;
@@ -9543,15 +9555,31 @@ body:has(.dashboard-page) {
 }
 
 .trades-advanced-dates .filter-field input {
+  background: #faf8f5;
+  border-radius: var(--radius-md);
   min-width: 0;
   width: 100%;
 }
 
 .trades-reset-button {
   align-self: flex-start;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* Drop the cream highlight veil (polish) on the Reset button. */
+.trades-reset-button::before {
+  display: none;
+}
+
+.trades-reset-button:not(:disabled):hover {
+  box-shadow: none;
+  transform: none;
 }
 
 /* --- Trade Timeline ------------------------------------------------------ */
+/* Flat card: #F4EFE6 fill + hairline border, no gloss veil or shadow.
+   Keeps the dashboard-calendar-style gradient-ring hover. */
 .trades-timeline-panel {
   background: #f4efe6;
   border: 1px solid #e6dfd8;
@@ -9559,7 +9587,6 @@ body:has(.dashboard-page) {
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-/* Drop the cream highlight veil (polish) that .panel adds by default. */
 .trades-timeline-panel::before {
   display: none;
 }
@@ -9594,8 +9621,24 @@ body:has(.dashboard-page) {
 
 .trades-expand-all {
   align-items: center;
+  background: #f4efe6;
+  border: 1px solid #e6dfd8;
+  border-radius: var(--radius-md);
+  box-shadow: none;
   display: inline-flex;
   gap: 6px;
+}
+
+/* Drop the cream highlight veil (polish) on the Expand button. */
+.trades-expand-all::before {
+  display: none;
+}
+
+.trades-expand-all:not(:disabled):hover {
+  background: #efe8dc;
+  border-color: #ddd4c7;
+  box-shadow: none;
+  transform: none;
 }
 
 .trades-timeline {
@@ -9667,10 +9710,17 @@ body:has(.dashboard-page) {
 }
 
 .trades-timeline-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: #f4efe6;
+  border: 1px solid #e6dfd8;
   border-radius: var(--radius-md);
   overflow: hidden;
+  position: relative;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.trades-timeline-card:hover {
+  box-shadow: 0 8px 20px rgba(26, 26, 26, 0.07);
+  transform: translateY(-2px);
 }
 
 .trades-timeline-summary {
@@ -9786,6 +9836,19 @@ body:has(.dashboard-page) {
 .trades-timeline-detail-item strong {
   font-size: 13px;
   font-weight: 650;
+}
+
+.trades-timeline-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 2px;
+}
+
+.trades-timeline-loading {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  opacity: 0.85;
 }
 
 .trades-timeline-end {
