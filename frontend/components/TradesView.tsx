@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { HandDrawnDivider } from "@/components/HandDrawnDivider";
@@ -38,6 +38,10 @@ const SIDE_LABELS: Record<SideFilter, string> = {
 // excluded — same shape the /trades endpoint returns) so local preview without
 // a backend still renders the account's actual recent activity.
 const DEMO_REFERENCE_DATE = new Date("2026-06-05T00:00:00");
+
+// Timeline lazy-loads a viewport-sized batch of rows, revealing another batch
+// each time the user scrolls the sentinel near the bottom into view.
+const TIMELINE_PAGE_SIZE = 8;
 
 function demoTrade(overrides: Partial<Trade> & Pick<Trade, "symbol">): Trade {
   return {
@@ -404,6 +408,42 @@ export function TradesView() {
     return { total: filteredTrades.length, buy, sell, symbols };
   }, [filteredTrades]);
 
+  const [visibleCount, setVisibleCount] = useState(TIMELINE_PAGE_SIZE);
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+
+  // Reset the reveal window whenever the filtered result set changes so a new
+  // filter always starts from the first batch.
+  useEffect(() => {
+    setVisibleCount(TIMELINE_PAGE_SIZE);
+  }, [filteredTrades]);
+
+  const visibleTrades = filteredTrades.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredTrades.length;
+
+  // Reveal the next batch as the sentinel nears the bottom of the viewport.
+  // Runs once immediately so short lists fill the viewport, then on scroll.
+  useEffect(() => {
+    if (!hasMore) {
+      return;
+    }
+    const revealIfNear = () => {
+      const sentinel = sentinelRef.current;
+      if (!sentinel) {
+        return;
+      }
+      if (sentinel.getBoundingClientRect().top <= window.innerHeight + 160) {
+        setVisibleCount((current) => Math.min(current + TIMELINE_PAGE_SIZE, filteredTrades.length));
+      }
+    };
+    revealIfNear();
+    window.addEventListener("scroll", revealIfNear, { passive: true });
+    window.addEventListener("resize", revealIfNear);
+    return () => {
+      window.removeEventListener("scroll", revealIfNear);
+      window.removeEventListener("resize", revealIfNear);
+    };
+  }, [hasMore, visibleCount, filteredTrades.length]);
+
   const allExpanded =
     filteredTrades.length > 0 && filteredTrades.every((trade, index) => expandedIds.has(rowKey(trade, index)));
 
@@ -626,7 +666,7 @@ export function TradesView() {
           </div>
         ) : (
           <ol className="trades-timeline">
-            {filteredTrades.map((trade, index) => {
+            {visibleTrades.map((trade, index) => {
               const key = rowKey(trade, index);
               const expanded = expandedIds.has(key);
               const buy = isBuyTrade(trade);
@@ -694,9 +734,14 @@ export function TradesView() {
                 </li>
               );
             })}
+            {hasMore ? (
+              <li className="trades-timeline-sentinel" ref={sentinelRef} aria-hidden="true">
+                <span className="trades-timeline-loading">Loading more trades…</span>
+              </li>
+            ) : null}
           </ol>
         )}
-        {!isLoading && filteredTrades.length > 0 ? (
+        {!isLoading && filteredTrades.length > 0 && !hasMore ? (
           <p className="trades-timeline-end">You&apos;ve reached the end of your trade history.</p>
         ) : null}
       </section>
