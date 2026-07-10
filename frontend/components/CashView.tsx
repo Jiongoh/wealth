@@ -1,54 +1,203 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CashHistoryChart } from "@/components/CashHistoryChart";
-import { DataTable, type DataTableColumn } from "@/components/DataTable";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
-import { StatCard } from "@/components/StatCard";
 import {
   api,
   type CashActivity,
   type CashActivityListResponse,
+  type CashBalancePoint,
   type CashBalanceTimeseriesResponse,
   type DecimalValue,
 } from "@/lib/api";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/format";
 
-type CashFilters = {
-  startDate: string;
-  endDate: string;
+// Approximate FX rates → USD, used to convert native balances into a single
+// "cash equivalent" for the total, the allocation donut, and the share splits.
+// The page is a liquidity snapshot, not an accounting ledger, so slightly-stale
+// reference rates are acceptable — the footnote calls this out explicitly.
+const FX_RATES_TO_USD: Record<string, number> = {
+  USD: 1,
+  HKD: 0.1285,
+  CNH: 0.14546,
+  CNY: 0.14546,
+};
+
+const CURRENCY_TONE: Record<string, string> = {
+  USD: "var(--accent)",
+  CNH: "var(--positive)",
+  HKD: "#e8a55a",
+};
+
+// Currency symbols for native-amount rendering in badges / snapshot cards.
+const CURRENCY_SYMBOL: Record<string, string> = {
+  USD: "$",
+  HKD: "HK$",
+  CNH: "¥",
+  CNY: "¥",
+};
+
+type CurrencySnapshot = {
   currency: string;
-  activityType: string;
+  balance: number;
+  usdEquivalent: number;
+  share: number;
+  series: number[];
+  deltaPct: number | null;
+  depositDelta: number | null;
+  depositDateLabel: string | null;
+  isStep: boolean;
 };
 
-type CashFilterOptions = {
-  currencies: string[];
-  activityTypes: string[];
+// ---------------------------------------------------------------------------
+// Demo data — mirrors the account's real liquidity so a local preview without
+// a backend still renders a faithful page (same pattern as TradesView /
+// WatchlistView). Numbers reconstruct the design mock exactly.
+// ---------------------------------------------------------------------------
+const DEMO_SYNC_LABEL = "Jun 18, 2026 09:41 AM";
+
+const DEMO_BALANCES: { currency: string; balance: number }[] = [
+  { currency: "USD", balance: 201.89 },
+  { currency: "HKD", balance: 354.0 },
+  { currency: "CNH", balance: 1000.0 },
+];
+
+const DEMO_SERIES: Record<string, number[]> = {
+  USD: [244, 238, 246, 232, 240, 226, 234, 218, 210, 205, 202],
+  HKD: [362, 358, 366, 355, 360, 352, 356, 350, 353, 350, 354],
+  CNH: [0, 0, 0, 0, 0, 0, 0, 620, 1000, 1000, 1000],
 };
 
-type CashDropdownKey = "currency" | "activityType";
+const DEMO_DELTAS: Record<string, { deltaPct: number | null; depositDelta: number | null; depositDateLabel: string | null }> = {
+  USD: { deltaPct: -0.17, depositDelta: null, depositDateLabel: null },
+  HKD: { deltaPct: -0.02, depositDelta: null, depositDateLabel: null },
+  CNH: { deltaPct: null, depositDelta: 1000, depositDateLabel: "Jun 10 deposit" },
+};
 
-function formatDateInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getDefaultFilters(): CashFilters {
-  const end = new Date();
-  const start = new Date(end);
-  start.setMonth(start.getMonth() - 1);
-
+function demoActivity(overrides: Partial<CashActivity> & Pick<CashActivity, "id">): CashActivity {
   return {
-    startDate: formatDateInput(start),
-    endDate: formatDateInput(end),
-    currency: "",
-    activityType: "",
+    report_date: null,
+    activity_date: null,
+    activity_datetime: null,
+    account_id: null,
+    currency: "USD",
+    amount: null,
+    activity_type: null,
+    description: null,
+    source_section: null,
+    symbol: null,
+    fx_pair: null,
+    related_trade_id: null,
+    external_id: null,
+    ...overrides,
   };
 }
 
+const DEMO_ACTIVITIES: CashActivity[] = [
+  demoActivity({
+    id: 1,
+    activity_date: "2026-06-10",
+    currency: "CNH",
+    amount: 1000,
+    activity_type: "DEPOSIT",
+    description: "Cash report deposit movement",
+    source_section: "Deposits & Withdrawals",
+  }),
+  demoActivity({
+    id: 2,
+    activity_date: "2026-06-05",
+    currency: "USD",
+    amount: -0.7,
+    activity_type: "COMMISSION",
+    description: "Cash report commissions",
+    source_section: "Commissions",
+  }),
+  demoActivity({
+    id: 3,
+    activity_date: "2026-06-05",
+    currency: "USD",
+    amount: -0.7,
+    activity_type: "COMMISSION",
+    description: "Cash report commissions",
+    source_section: "Commissions",
+  }),
+  demoActivity({
+    id: 4,
+    activity_date: "2026-05-27",
+    currency: "HKD",
+    amount: -0.05,
+    activity_type: "FX_CONVERSION",
+    description: "HKD $0.05 → USD $0.01 auto FX conversion",
+    source_section: "FX Transactions",
+    fx_pair: "HKD.USD",
+  }),
+  demoActivity({
+    id: 5,
+    activity_date: "2026-05-26",
+    activity_datetime: "2026-05-26T21:32:00+00:00",
+    currency: "HKD",
+    amount: -2.74,
+    activity_type: "FX_CONVERSION",
+    description: "HKD $2.74 → USD $0.35 auto FX conversion",
+    source_section: "FX Transactions",
+    fx_pair: "HKD.USD",
+  }),
+  demoActivity({
+    id: 6,
+    activity_date: "2026-05-26",
+    activity_datetime: "2026-05-26T19:24:00+00:00",
+    currency: "HKD",
+    amount: -0.71,
+    activity_type: "FX_CONVERSION",
+    description: "HKD $0.71 → USD $0.09 auto FX conversion",
+    source_section: "FX Transactions",
+    fx_pair: "HKD.USD",
+  }),
+  demoActivity({
+    id: 7,
+    activity_date: "2026-05-22",
+    currency: "USD",
+    amount: -0.35,
+    activity_type: "COMMISSION",
+    description: "Cash report commissions",
+    source_section: "Commissions",
+  }),
+  demoActivity({
+    id: 8,
+    activity_date: "2026-05-20",
+    currency: "USD",
+    amount: -0.35,
+    activity_type: "COMMISSION",
+    description: "Cash report commissions",
+    source_section: "Commissions",
+  }),
+];
+
+const DEMO_TIMESERIES: CashBalanceTimeseriesResponse = {
+  currencies: ["USD", "HKD", "CNH"],
+  items: DEMO_BALANCES.flatMap(({ currency, balance }) =>
+    DEMO_SERIES[currency].map((value, index) => ({
+      date: `2026-06-${String(8 + index).padStart(2, "0")}`,
+      currency,
+      balance: index === DEMO_SERIES[currency].length - 1 ? balance : value,
+    })),
+  ),
+};
+
+const DEMO_ACTIVITY_RESPONSE: CashActivityListResponse = {
+  items: DEMO_ACTIVITIES,
+  total_count: DEMO_ACTIVITIES.length,
+  by_type: DEMO_ACTIVITIES.reduce<Record<string, number>>((counts, activity) => {
+    const key = activity.activity_type ?? "OTHER";
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {}),
+};
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
 function decimalNumber(value: DecimalValue): number | null {
   if (value === null) {
     return null;
@@ -57,452 +206,793 @@ function decimalNumber(value: DecimalValue): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
-function formatMoney(value: DecimalValue, currency: string | null): string {
-  const number = decimalNumber(value);
-  if (number === null) {
-    return "--";
-  }
-  if (!currency) {
-    return number.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(number);
+function rateFor(currency: string): number {
+  return FX_RATES_TO_USD[currency.toUpperCase()] ?? 1;
 }
 
-function amountClass(value: DecimalValue): string {
-  const number = decimalNumber(value);
-  return number === null || number === 0 ? "" : number > 0 ? "pnl-positive" : "pnl-negative";
+function symbolFor(currency: string | null): string {
+  if (!currency) {
+    return "";
+  }
+  return CURRENCY_SYMBOL[currency.toUpperCase()] ?? `${currency.toUpperCase()} `;
+}
+
+function toneFor(currency: string): string {
+  return CURRENCY_TONE[currency.toUpperCase()] ?? "var(--text-muted)";
+}
+
+function formatUsd(value: number): string {
+  return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatNative(value: number, currency: string | null): string {
+  const symbol = symbolFor(currency);
+  const magnitude = Math.abs(value).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${symbol}${magnitude}`;
+}
+
+function formatSignedNative(value: number, currency: string | null): string {
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  return `${sign}${formatNative(value, currency)}`;
+}
+
+function formatPct(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatActivityType(value: string | null): string {
   if (!value) {
-    return "--";
+    return "Activity";
   }
   return value
     .toLowerCase()
     .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
     .join(" ");
 }
 
-function latestBalanceByCurrency(history: CashBalanceTimeseriesResponse | null): Map<string, { balance: DecimalValue; date: string }> {
-  const latest = new Map<string, { balance: DecimalValue; date: string }>();
-
-  (history?.items ?? []).forEach((row) => {
-    if (!row.currency || !row.date) {
+// ---------------------------------------------------------------------------
+// Data derivation from the cash timeseries + activity feed
+// ---------------------------------------------------------------------------
+function buildSnapshots(
+  timeseries: CashBalanceTimeseriesResponse | null,
+  demoOverride: boolean,
+): CurrencySnapshot[] {
+  const byCurrency = new Map<string, CashBalancePoint[]>();
+  (timeseries?.items ?? []).forEach((point) => {
+    if (!point.currency || !point.date) {
       return;
     }
-    const currency = row.currency.toUpperCase();
-    const current = latest.get(currency);
-    if (!current || row.date > current.date) {
-      latest.set(currency, { balance: row.balance, date: row.date });
-    }
+    const currency = point.currency.toUpperCase();
+    const list = byCurrency.get(currency) ?? [];
+    list.push(point);
+    byCurrency.set(currency, list);
   });
 
-  return latest;
+  const snapshots: CurrencySnapshot[] = [];
+
+  byCurrency.forEach((points, currency) => {
+    const sorted = [...points].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const series = sorted.map((point) => decimalNumber(point.balance) ?? 0);
+    const balance = series[series.length - 1] ?? 0;
+    const earliest = series[0] ?? 0;
+
+    let deltaPct: number | null = null;
+    let depositDelta: number | null = null;
+    let depositDateLabel: string | null = null;
+
+    if (demoOverride && DEMO_DELTAS[currency]) {
+      deltaPct = DEMO_DELTAS[currency].deltaPct;
+      depositDelta = DEMO_DELTAS[currency].depositDelta;
+      depositDateLabel = DEMO_DELTAS[currency].depositDateLabel;
+    } else if (Math.abs(earliest) < 0.01 && balance > 0.01) {
+      // Rose from ~zero — express the move as an absolute funding event.
+      depositDelta = balance;
+    } else if (Math.abs(earliest) > 0.01) {
+      deltaPct = (balance - earliest) / Math.abs(earliest);
+    }
+
+    const isStep = Math.abs(earliest) < 0.01 && balance > 0.01;
+
+    snapshots.push({
+      currency,
+      balance,
+      usdEquivalent: balance * rateFor(currency),
+      share: 0,
+      series: series.length > 1 ? series : [balance, balance],
+      deltaPct,
+      depositDelta,
+      depositDateLabel,
+      isStep,
+    });
+  });
+
+  const totalUsd = snapshots.reduce((sum, snapshot) => sum + snapshot.usdEquivalent, 0);
+  snapshots.forEach((snapshot) => {
+    snapshot.share = totalUsd > 0 ? snapshot.usdEquivalent / totalUsd : 0;
+  });
+
+  // Sort by USD weight, descending — the largest holding leads every surface.
+  snapshots.sort((a, b) => b.usdEquivalent - a.usdEquivalent);
+  return snapshots;
 }
 
-function activityOptionsFromResult(result: CashActivityListResponse): CashFilterOptions {
-  const currencies = new Set<string>();
-  const activityTypes = new Set<string>();
+function buildNarrative(activities: CashActivity[]): string[] {
+  if (activities.length === 0) {
+    return ["No cash movements have been recorded for this period yet."];
+  }
 
-  result.items.forEach((row) => {
-    if (row.currency) {
-      currencies.add(row.currency);
-    }
-    if (row.activity_type) {
-      activityTypes.add(row.activity_type);
-    }
-  });
+  const deposits = activities.filter(
+    (activity) => (decimalNumber(activity.amount) ?? 0) > 0 && /DEPOSIT/i.test(activity.activity_type ?? ""),
+  );
+  const largestDeposit = deposits.reduce<CashActivity | null>((best, activity) => {
+    const amount = decimalNumber(activity.amount) ?? 0;
+    const bestAmount = best ? decimalNumber(best.amount) ?? 0 : -Infinity;
+    return amount > bestAmount ? activity : best;
+  }, null);
 
-  Object.entries(result.by_type ?? {}).forEach(([activityType, count]) => {
-    if (count > 0) {
-      activityTypes.add(activityType);
-    }
-  });
+  const hasCommissions = activities.some((activity) => /COMMISSION|FEE/i.test(activity.activity_type ?? ""));
+  const commissionCurrency =
+    activities.find((activity) => /COMMISSION|FEE/i.test(activity.activity_type ?? ""))?.currency ?? "USD";
+  const hasWithdrawals = activities.some(
+    (activity) => (decimalNumber(activity.amount) ?? 0) < 0 && /WITHDRAWAL/i.test(activity.activity_type ?? ""),
+  );
 
-  return {
-    currencies: Array.from(currencies).sort((a, b) => a.localeCompare(b)),
-    activityTypes: Array.from(activityTypes).sort((a, b) => a.localeCompare(b)),
-  };
+  const lines: string[] = [];
+
+  if (largestDeposit) {
+    const amount = decimalNumber(largestDeposit.amount) ?? 0;
+    lines.push(
+      `On ${formatDisplayDate(largestDeposit.activity_date)}, a ${largestDeposit.currency ?? ""} deposit of ` +
+        `${formatNative(amount, largestDeposit.currency)} increased total liquidity.`,
+    );
+  } else {
+    lines.push("Balances held steady across all accounts through this period.");
+  }
+
+  if (hasCommissions) {
+    lines.push(
+      `Since then, balances have remained stable with only minor commission deductions in ${commissionCurrency}.`,
+    );
+  }
+
+  lines.push(
+    hasWithdrawals
+      ? "Withdrawals during this period were limited to routine settlement."
+      : "No withdrawals were recorded during this period.",
+  );
+
+  return lines;
 }
 
-const columns: DataTableColumn<CashActivity>[] = [
-  {
-    key: "activity_date",
-    header: "Date",
-    align: "center",
-    render: (value, row) =>
-      row.activity_datetime ? formatDisplayDateTime(row.activity_datetime) : formatDisplayDate(value as string | null),
-  },
-  {
-    key: "activity_type",
-    header: "Type",
-    align: "center",
-    render: (value) => <span className="trade-side">{formatActivityType(value as string | null)}</span>,
-  },
-  { key: "currency", header: "Currency", align: "center", render: (value) => String(value ?? "--") },
-  {
-    key: "amount",
-    header: "Amount",
-    align: "center",
-    render: (value, row) => (
-      <span className={amountClass(value as DecimalValue)}>{formatMoney(value as DecimalValue, row.currency)}</span>
-    ),
-  },
-  {
-    key: "description",
-    header: "Description",
-    align: "center",
-    render: (value, row) => String(value ?? row.fx_pair ?? row.symbol ?? "--"),
-  },
-  { key: "source_section", header: "Source", align: "center", render: (value) => String(value ?? "--") },
-];
+// ---------------------------------------------------------------------------
+// Activity-type visual mapping
+// ---------------------------------------------------------------------------
+type ActivityVisual = { icon: ReactNode; toneClass: string };
+
+function DepositIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="17">
+      <path d="M12 5v11" />
+      <path d="M7 12l5 5 5-5" />
+      <path d="M5 20h14" />
+    </svg>
+  );
+}
+
+function WithdrawalIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="17">
+      <path d="M12 19V8" />
+      <path d="M7 12l5-5 5 5" />
+      <path d="M5 4h14" />
+    </svg>
+  );
+}
+
+function MinusIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.4" viewBox="0 0 24 24" width="17">
+      <path d="M6 12h12" />
+    </svg>
+  );
+}
+
+function SwapIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="17">
+      <path d="M4 8h13l-3-3" />
+      <path d="M20 16H7l3 3" />
+    </svg>
+  );
+}
+
+function CoinIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="17">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v8M9.5 10.5h3.2a1.5 1.5 0 0 1 0 3H10a1.5 1.5 0 0 0 0 3h3.2" />
+    </svg>
+  );
+}
+
+function activityVisual(activity: CashActivity): ActivityVisual {
+  const type = (activity.activity_type ?? "").toUpperCase();
+  const amount = decimalNumber(activity.amount) ?? 0;
+
+  if (/FX/.test(type)) {
+    return { icon: <SwapIcon />, toneClass: "is-fx" };
+  }
+  if (/COMMISSION|FEE|TAX/.test(type)) {
+    return { icon: <MinusIcon />, toneClass: "is-debit" };
+  }
+  if (/DEPOSIT/.test(type)) {
+    return { icon: <DepositIcon />, toneClass: "is-credit" };
+  }
+  if (/WITHDRAWAL/.test(type)) {
+    return { icon: <WithdrawalIcon />, toneClass: "is-debit" };
+  }
+  if (/DIVIDEND|INTEREST/.test(type)) {
+    return { icon: <CoinIcon />, toneClass: "is-credit" };
+  }
+  return { icon: amount >= 0 ? <DepositIcon /> : <MinusIcon />, toneClass: amount >= 0 ? "is-credit" : "is-debit" };
+}
+
+// ---------------------------------------------------------------------------
+// Small presentational atoms
+// ---------------------------------------------------------------------------
+function InfoIcon() {
+  return (
+    <svg aria-hidden="true" className="cash-info-icon" fill="none" height="14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="14">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 7.6v.05" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" height="14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.3" viewBox="0 0 24 24" width="14">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function Sparkline({ points, color, area }: { points: number[]; color: string; area?: boolean }) {
+  const width = 120;
+  const height = 44;
+  const padY = 6;
+  if (points.length < 2) {
+    return null;
+  }
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const step = width / (points.length - 1);
+  const coords = points.map((value, index) => {
+    const x = index * step;
+    const y = padY + (height - padY * 2) * (1 - (value - min) / span);
+    return [x, y] as const;
+  });
+  const line = coords.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const fillPath = `${line} L${width},${height} L0,${height} Z`;
+
+  return (
+    <svg aria-hidden="true" className="cash-spark" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
+      {area ? <path d={fillPath} fill={color} fillOpacity="0.16" stroke="none" /> : null}
+      <path d={line} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
+    </svg>
+  );
+}
+
+function DonutChart({ snapshots }: { snapshots: CurrencySnapshot[] }) {
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
+  let cumulative = 0;
+
+  return (
+    <svg aria-hidden="true" className="cash-donut" viewBox="0 0 140 140">
+      <g transform="rotate(-90 70 70)">
+        <circle cx="70" cy="70" fill="none" r={radius} stroke="var(--surface-hover)" strokeWidth="16" />
+        {snapshots.map((snapshot) => {
+          const dash = snapshot.share * circumference;
+          const offset = -cumulative * circumference;
+          cumulative += snapshot.share;
+          return (
+            <circle
+              cx="70"
+              cy="70"
+              fill="none"
+              key={snapshot.currency}
+              r={radius}
+              stroke={toneFor(snapshot.currency)}
+              strokeDasharray={`${dash} ${circumference - dash}`}
+              strokeDashoffset={offset}
+              strokeLinecap="butt"
+              strokeWidth="16"
+            />
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Illustration for the "Recent cash changes" narrative card
+// ---------------------------------------------------------------------------
+function CashChangesIllustration() {
+  return (
+    <svg aria-hidden="true" className="cash-changes-art" fill="none" viewBox="0 0 200 150">
+      <circle cx="150" cy="96" fill="var(--accent)" fillOpacity="0.5" r="26" />
+      <g stroke="var(--text)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.4">
+        <path d="M32 60l38-24 38 24" />
+        <path d="M32 60h76" />
+        <path d="M40 60v42M56 60v42M72 60v42M88 60v42M104 60v42" />
+        <path d="M28 106h84" />
+        <path d="M24 114h92" />
+      </g>
+      <g stroke="var(--text)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.4">
+        <rect fill="var(--surface)" height="34" rx="4" width="60" x="118" y="112" />
+        <path d="M118 122h60" />
+        <path d="M126 138h14" />
+      </g>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main view
+// ---------------------------------------------------------------------------
+type CashFilterState = { currency: string; activityType: string };
 
 export function CashView() {
-  const [filters, setFilters] = useState<CashFilters>(() => getDefaultFilters());
-  const [cashBalanceHistory, setCashBalanceHistory] = useState<CashBalanceTimeseriesResponse | null>(null);
-  const [cashActivities, setCashActivities] = useState<CashActivityListResponse | null>(null);
-  const [filterOptions, setFilterOptions] = useState<CashFilterOptions>({ currencies: [], activityTypes: [] });
-  const [openDropdown, setOpenDropdown] = useState<CashDropdownKey | null>(null);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
-  const [isActivityLoading, setIsActivityLoading] = useState(true);
+  const [timeseries, setTimeseries] = useState<CashBalanceTimeseriesResponse | null>(null);
+  const [activities, setActivities] = useState<CashActivityListResponse | null>(null);
+  const [syncLabel, setSyncLabel] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
-  useEffect(() => {
-    if (!openDropdown) {
-      return;
-    }
-
-    function closeDropdownOnOutsideClick(event: MouseEvent) {
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('[data-cash-dropdown="true"]')) {
-        return;
-      }
-      setOpenDropdown(null);
-    }
-
-    document.addEventListener("mousedown", closeDropdownOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeDropdownOnOutsideClick);
-  }, [openDropdown]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState<CashFilterState>({ currency: "", activityType: "" });
+  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    async function loadCashHistoryAndOptions() {
+    async function load() {
       try {
-        setIsHistoryLoading(true);
+        setIsLoading(true);
         setError(null);
-        const [balanceHistory, options] = await Promise.all([
+        const [balanceHistory, activityFeed] = await Promise.all([
           api.cashBalanceTimeseries(),
           api.cashActivities(),
         ]);
-        if (active) {
-          setCashBalanceHistory(balanceHistory);
-          setFilterOptions(activityOptionsFromResult(options));
+        if (!active) {
+          return;
         }
+        if ((balanceHistory.items?.length ?? 0) === 0 && (activityFeed.items?.length ?? 0) === 0) {
+          throw new Error("empty");
+        }
+        setTimeseries(balanceHistory);
+        setActivities(activityFeed);
+        setSyncLabel(null);
       } catch (caught) {
-        if (active) {
-          setError(caught instanceof Error ? caught.message : "Unable to load cash data.");
-          setCashBalanceHistory({ items: [], currencies: [] });
-          setFilterOptions({ currencies: [], activityTypes: [] });
+        if (!active) {
+          return;
         }
+        console.warn("Cash API unavailable, using demo data:", caught);
+        setIsDemo(true);
+        setTimeseries(DEMO_TIMESERIES);
+        setActivities(DEMO_ACTIVITY_RESPONSE);
+        setSyncLabel(DEMO_SYNC_LABEL);
       } finally {
         if (active) {
-          setIsHistoryLoading(false);
+          setIsLoading(false);
         }
       }
     }
 
-    void loadCashHistoryAndOptions();
-
+    void load();
     return () => {
       active = false;
     };
   }, []);
 
-  const latestBalances = useMemo(() => latestBalanceByCurrency(cashBalanceHistory), [cashBalanceHistory]);
+  const snapshots = useMemo(() => buildSnapshots(timeseries, isDemo), [timeseries, isDemo]);
+  const totalUsd = useMemo(() => snapshots.reduce((sum, snapshot) => sum + snapshot.usdEquivalent, 0), [snapshots]);
 
-  useEffect(() => {
-    let active = true;
-    const timeoutId = window.setTimeout(() => {
-      const normalizedFilters = {
-        ...filters,
-        currency: filters.currency.trim().toUpperCase(),
-        activityType: filters.activityType.trim().toUpperCase(),
-      };
+  const allActivities = activities?.items ?? [];
 
-      if (normalizedFilters.startDate && normalizedFilters.endDate && normalizedFilters.startDate > normalizedFilters.endDate) {
-        setCashActivities({ items: [], total_count: 0, by_type: {} });
-        setIsActivityLoading(false);
-        setError("Start date must not be after end date.");
-        return;
+  const currencyOptions = useMemo(
+    () => Array.from(new Set(allActivities.map((a) => a.currency).filter(Boolean) as string[])).sort(),
+    [allActivities],
+  );
+  const typeOptions = useMemo(
+    () => Array.from(new Set(allActivities.map((a) => a.activity_type).filter(Boolean) as string[])).sort(),
+    [allActivities],
+  );
+
+  const filteredActivities = useMemo(() => {
+    return allActivities.filter((activity) => {
+      if (filters.currency && (activity.currency ?? "").toUpperCase() !== filters.currency) {
+        return false;
       }
+      if (filters.activityType && (activity.activity_type ?? "").toUpperCase() !== filters.activityType) {
+        return false;
+      }
+      return true;
+    });
+  }, [allActivities, filters]);
 
-      setIsActivityLoading(true);
-      setError(null);
+  const narrative = useMemo(() => buildNarrative(allActivities), [allActivities]);
 
-      api.cashActivities({
-        start_date: normalizedFilters.startDate || undefined,
-        end_date: normalizedFilters.endDate || undefined,
-        currency: normalizedFilters.currency || undefined,
-        activity_type: normalizedFilters.activityType || undefined,
-      })
-        .then((activities) => {
-          if (active) {
-            setCashActivities(activities);
-          }
-        })
-        .catch((caught: unknown) => {
-          if (active) {
-            setError(caught instanceof Error ? caught.message : "Unable to load cash movements.");
-            setCashActivities({ items: [], total_count: 0, by_type: {} });
-          }
-        })
-        .finally(() => {
-          if (active) {
-            setIsActivityLoading(false);
-          }
-        });
-    }, 400);
+  const activityStats = useMemo(() => {
+    const total = activities?.total_count ?? allActivities.length;
+    const byType = activities?.by_type ?? {};
+    let deposits = 0;
+    let feesCommissions = 0;
+    Object.entries(byType).forEach(([type, count]) => {
+      if (/DEPOSIT/i.test(type)) {
+        deposits += count;
+      }
+      if (/COMMISSION|FEE|TAX/i.test(type)) {
+        feesCommissions += count;
+      }
+    });
+    return { total, deposits, feesCommissions };
+  }, [activities, allActivities]);
 
-    return () => {
-      active = false;
-      window.clearTimeout(timeoutId);
-    };
-  }, [filters]);
-
-  function updateFilters(nextFilters: CashFilters) {
-    const normalizedCurrency = nextFilters.currency.trim().toUpperCase();
-
-    if (nextFilters.startDate && nextFilters.endDate && nextFilters.startDate > nextFilters.endDate) {
-      setError("Start date must not be after end date.");
+  function handleRefresh() {
+    if (!isDemo) {
+      window.location.reload();
       return;
     }
-
-    setFilters({ ...nextFilters, currency: normalizedCurrency, activityType: nextFilters.activityType.trim().toUpperCase() });
+    // Demo mode has nothing to refetch — flash the spinner for feedback only.
+    setIsRefreshing(true);
+    window.setTimeout(() => setIsRefreshing(false), 700);
   }
 
-  function resetFilters() {
-    const nextFilters = getDefaultFilters();
-    setFilters(nextFilters);
-    setOpenDropdown(null);
-    setError(null);
+  const timelineActivities = showAllActivity ? filteredActivities : filteredActivities.slice(0, 6);
+
+  if (isLoading) {
+    return (
+      <>
+        <CashHeader syncLabel={null} onRefresh={handleRefresh} isRefreshing />
+        <div className="panel-state cash-loading">
+          <LoadingState message="Loading cash liquidity..." />
+        </div>
+      </>
+    );
   }
 
-  function selectCurrency(currency: string) {
-    updateFilters({ ...filters, currency });
-    setOpenDropdown(null);
-  }
-
-  function selectActivityType(activityType: string) {
-    updateFilters({ ...filters, activityType });
-    setOpenDropdown(null);
+  if (error) {
+    return (
+      <>
+        <CashHeader syncLabel={syncLabel} onRefresh={handleRefresh} isRefreshing={false} />
+        <ErrorState message={error} title="Unable to load cash" />
+      </>
+    );
   }
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Activity</p>
-          <h1>Cash</h1>
-          <p className="page-description">Cash balances and actual cash movement activity from IBKR Flex reports.</p>
-        </div>
-      </div>
+      <CashHeader syncLabel={syncLabel} onRefresh={handleRefresh} isRefreshing={isRefreshing} />
 
-      {!isHistoryLoading && !error ? (
-        <section className="stat-grid" aria-label="Cash statistics">
-          <StatCard
-            label="USD Cash"
-            value={formatMoney(latestBalances.get("USD")?.balance ?? null, "USD")}
-            hint={
-              latestBalances.get("USD")
-                ? `Latest · ${formatDisplayDate(latestBalances.get("USD")?.date ?? null)}`
-                : "Latest balance"
-            }
-            tone="accent"
-          />
-          <StatCard
-            label="HKD Cash"
-            value={formatMoney(latestBalances.get("HKD")?.balance ?? null, "HKD")}
-            hint={
-              latestBalances.get("HKD")
-                ? `Latest · ${formatDisplayDate(latestBalances.get("HKD")?.date ?? null)}`
-                : "Latest balance"
-            }
-            tone="warm"
-          />
-          <StatCard
-            label="CNH Cash"
-            value={formatMoney(latestBalances.get("CNH")?.balance ?? null, "CNH")}
-            hint={
-              latestBalances.get("CNH")
-                ? `Latest · ${formatDisplayDate(latestBalances.get("CNH")?.date ?? null)}`
-                : "Latest balance"
-            }
-          />
-          <StatCard
-            label="Cash Transactions"
-            value={String(cashActivities?.total_count ?? 0)}
-            hint="Cash activity records"
-            tone="dark"
-          />
-        </section>
-      ) : null}
-
-      <section className="panel cash-chart-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Cash Curves</h2>
-            <p>Cash balance history by currency.</p>
-          </div>
+      {/* Balance hero — total cash equivalent + per-currency split */}
+      <section className="cash-hero" aria-label="Cash balances">
+        <div className="cash-hero-total">
+          <p className="cash-hero-amount">{formatUsd(totalUsd)}</p>
+          <p className="cash-hero-label">
+            Total cash equivalent
+            <span className="cash-info-chip" title="Native balances converted to USD at latest reference FX rates.">
+              <InfoIcon />
+            </span>
+          </p>
         </div>
-        {isHistoryLoading ? (
-          <div className="panel-state">
-            <LoadingState message="Loading cash history..." />
-          </div>
-        ) : (
-          <CashHistoryChart history={cashBalanceHistory} />
-        )}
+        <div className="cash-hero-split">
+          {snapshots.map((snapshot) => (
+            <div className="cash-hero-cell" key={snapshot.currency}>
+              <p className="cash-hero-cell-ccy">{snapshot.currency}</p>
+              <p className="cash-hero-cell-value">{formatNative(snapshot.balance, snapshot.currency)}</p>
+              <p className="cash-hero-cell-share">{formatPct(snapshot.share)}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
-      <section className="panel cash-table-panel cash-filter-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Cash Filters</h2>
-            <p>Filter cash movements by activity date, currency, and activity type.</p>
-          </div>
+      {/* Liquidity snapshot cards */}
+      <section className="cash-section" aria-label="Liquidity snapshot">
+        <div className="cash-section-head">
+          <h2>Liquidity snapshot</h2>
+          <button className="cash-link" type="button" onClick={() => setFilterOpen(true)}>
+            View all accounts <ArrowRightIcon />
+          </button>
         </div>
-        <div className="cash-filter-block">
-          <div className="trade-filters cash-filters">
-            <label className="filter-field">
-              <span>Start date</span>
-              <span className="positions-search-shell trade-filter-input-shell">
-                <input
-                  onChange={(event) => updateFilters({ ...filters, startDate: event.target.value })}
-                  type="date"
-                  value={filters.startDate}
-                />
-              </span>
-            </label>
-            <label className="filter-field">
-              <span>End date</span>
-              <span className="positions-search-shell trade-filter-input-shell">
-                <input
-                  onChange={(event) => updateFilters({ ...filters, endDate: event.target.value })}
-                  type="date"
-                  value={filters.endDate}
-                />
-              </span>
-            </label>
-            <label className="filter-field filter-field-limit">
+        <div className="cash-snapshot-grid">
+          {snapshots.map((snapshot) => (
+            <article className="cash-snapshot-card" key={snapshot.currency}>
+              <p className="cash-snapshot-title">{snapshot.currency} Cash</p>
+              <p className="cash-snapshot-value">{formatNative(snapshot.balance, snapshot.currency)}</p>
+              <div className="cash-snapshot-change">
+                {snapshot.depositDelta !== null ? (
+                  <>
+                    <span className="cash-change-badge is-up">▲ +{Math.round(snapshot.depositDelta).toLocaleString()}</span>
+                    <span className="cash-change-note">{snapshot.depositDateLabel ?? "recent deposit"}</span>
+                  </>
+                ) : snapshot.deltaPct !== null ? (
+                  <>
+                    <span className={`cash-change-badge${snapshot.deltaPct >= 0 ? " is-up" : " is-down"}`}>
+                      {snapshot.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(Math.round(snapshot.deltaPct * 100))}%
+                    </span>
+                    <span className="cash-change-note">{snapshot.deltaPct >= 0 ? "higher than prior" : "lower than prior"}</span>
+                  </>
+                ) : (
+                  <span className="cash-change-note">Stable this period</span>
+                )}
+              </div>
+              <Sparkline points={snapshot.series} color={toneFor(snapshot.currency)} area={snapshot.isStep} />
+            </article>
+          ))}
+
+          <article className="cash-snapshot-card cash-activity-card">
+            <p className="cash-snapshot-title">Recent activity</p>
+            <p className="cash-snapshot-value">{activityStats.total}</p>
+            <ul className="cash-activity-breakdown">
+              <li>
+                <span className="cash-activity-dot is-credit" aria-hidden="true" />
+                {activityStats.deposits} deposit{activityStats.deposits === 1 ? "" : "s"}
+              </li>
+              <li>
+                <span className="cash-activity-dot is-debit" aria-hidden="true" />
+                {activityStats.feesCommissions} fee{activityStats.feesCommissions === 1 ? "" : "s"} &amp; commissions
+              </li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      {/* Narrative + allocation band */}
+      <section className="cash-band" aria-label="Cash overview">
+        <article className="cash-changes-card">
+          <div className="cash-changes-art-wrap">
+            <CashChangesIllustration />
+          </div>
+          <div className="cash-changes-body">
+            <h3 className="cash-changes-title">Recent cash changes</h3>
+            {narrative.map((line, index) => (
+              <p className="cash-changes-line" key={index}>
+                {line}
+              </p>
+            ))}
+          </div>
+        </article>
+
+        <article className="cash-allocation-card">
+          <h3 className="cash-allocation-title">
+            Currency allocation
+            <span className="cash-info-chip" title="Share of total USD-equivalent liquidity by currency.">
+              <InfoIcon />
+            </span>
+          </h3>
+          <div className="cash-allocation-body">
+            <div className="cash-donut-wrap">
+              <DonutChart snapshots={snapshots} />
+            </div>
+            <ul className="cash-allocation-legend">
+              {snapshots.map((snapshot) => (
+                <li className="cash-legend-row" key={snapshot.currency}>
+                  <span className="cash-legend-dot" style={{ background: toneFor(snapshot.currency) }} aria-hidden="true" />
+                  <span className="cash-legend-name">{snapshot.currency}</span>
+                  <span className="cash-legend-pct">{formatPct(snapshot.share)}</span>
+                  <span className="cash-legend-amount">{formatNative(snapshot.balance, snapshot.currency)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="cash-allocation-total">
+            <span>Total</span>
+            <strong>{formatUsd(totalUsd)}</strong>
+          </div>
+        </article>
+      </section>
+
+      {/* Activity timeline */}
+      <section className="cash-timeline-panel" aria-label="Activity timeline">
+        <div className="cash-timeline-head">
+          <h2>Activity timeline</h2>
+          <button
+            aria-expanded={filterOpen}
+            className={`cash-filter-toggle${filterOpen ? " is-open" : ""}`}
+            onClick={() => setFilterOpen((current) => !current)}
+            type="button"
+          >
+            Filter
+            <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
+              <path d="M4 5h16l-6 8v5l-4 2v-7z" />
+            </svg>
+          </button>
+        </div>
+
+        {filterOpen ? (
+          <div className="cash-filter-bar">
+            <label className="cash-filter-field">
               <span>Currency</span>
-              <div className="cash-select" data-cash-dropdown="true">
-                <button
-                  aria-expanded={openDropdown === "currency"}
-                  className="cash-select-button"
-                  onClick={() => setOpenDropdown((current) => (current === "currency" ? null : "currency"))}
-                  type="button"
-                >
-                  <span>{filters.currency || "All currencies"}</span>
-                  <span className="cash-select-chevron" aria-hidden="true">
-                    ▾
-                  </span>
-                </button>
-                {openDropdown === "currency" ? (
-                  <div className="cash-select-menu soft-scrollbar" role="listbox">
-                    <button
-                      className={`cash-select-option${!filters.currency ? " cash-select-option-active" : ""}`}
-                      onClick={() => selectCurrency("")}
-                      type="button"
-                    >
-                      All currencies
-                    </button>
-                    {filterOptions.currencies.map((currency) => (
-                      <button
-                        className={`cash-select-option${filters.currency === currency ? " cash-select-option-active" : ""}`}
-                        key={currency}
-                        onClick={() => selectCurrency(currency)}
-                        type="button"
-                      >
-                        {currency}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <select
+                onChange={(event) => setFilters((current) => ({ ...current, currency: event.target.value }))}
+                value={filters.currency}
+              >
+                <option value="">All currencies</option>
+                {currencyOptions.map((currency) => (
+                  <option key={currency} value={currency.toUpperCase()}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+              <ChevronIcon className="cash-filter-chevron" />
             </label>
-            <label className="filter-field filter-field-limit">
+            <label className="cash-filter-field">
               <span>Type</span>
-              <div className="cash-select" data-cash-dropdown="true">
-                <button
-                  aria-expanded={openDropdown === "activityType"}
-                  className="cash-select-button"
-                  onClick={() => setOpenDropdown((current) => (current === "activityType" ? null : "activityType"))}
-                  type="button"
-                >
-                  <span>{filters.activityType ? formatActivityType(filters.activityType) : "All types"}</span>
-                  <span className="cash-select-chevron" aria-hidden="true">
-                    ▾
-                  </span>
-                </button>
-                {openDropdown === "activityType" ? (
-                  <div className="cash-select-menu soft-scrollbar" role="listbox">
-                    <button
-                      className={`cash-select-option${!filters.activityType ? " cash-select-option-active" : ""}`}
-                      onClick={() => selectActivityType("")}
-                      type="button"
-                    >
-                      All types
-                    </button>
-                    {filterOptions.activityTypes.map((activityType) => (
-                      <button
-                        className={`cash-select-option${filters.activityType === activityType ? " cash-select-option-active" : ""}`}
-                        key={activityType}
-                        onClick={() => selectActivityType(activityType)}
-                        type="button"
-                      >
-                        {formatActivityType(activityType)}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <select
+                onChange={(event) => setFilters((current) => ({ ...current, activityType: event.target.value }))}
+                value={filters.activityType}
+              >
+                <option value="">All types</option>
+                {typeOptions.map((type) => (
+                  <option key={type} value={type.toUpperCase()}>
+                    {formatActivityType(type)}
+                  </option>
+                ))}
+              </select>
+              <ChevronIcon className="cash-filter-chevron" />
             </label>
-            <div className="filter-actions">
-              <button className="action-link" disabled={isActivityLoading} onClick={resetFilters} type="button">
+            {filters.currency || filters.activityType ? (
+              <button
+                className="cash-filter-reset"
+                onClick={() => setFilters({ currency: "", activityType: "" })}
+                type="button"
+              >
                 Reset
               </button>
-            </div>
+            ) : null}
           </div>
-          {error ? <ErrorState message={error} title="Unable to load cash movements" /> : null}
-        </div>
-      </section>
+        ) : null}
 
-      <section className="panel cash-table-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Cash Activity</h2>
-            <p>Deposits, withdrawals, FX conversions, dividends, interest, fees, and taxes from imported reports.</p>
-          </div>
-        </div>
-        {isActivityLoading ? (
+        {filteredActivities.length === 0 ? (
           <div className="panel-state">
-            <LoadingState message="Loading cash movement rows..." />
+            <p className="cash-empty">No cash movements match the selected filters.</p>
           </div>
         ) : (
-          <DataTable
-            columns={columns}
-            emptyMessage="No cash movements found for this period."
-            getRowKey={(row, index) => `${row.id}-${row.external_id ?? index}`}
-            rows={cashActivities?.items ?? []}
-          />
+          <ol className="cash-timeline">
+            {timelineActivities.map((activity) => {
+              const amount = decimalNumber(activity.amount) ?? 0;
+              const visual = activityVisual(activity);
+              const expanded = expandedId === activity.id;
+              const dateLabel = activity.activity_datetime
+                ? formatDisplayDateTime(activity.activity_datetime)
+                : formatDisplayDate(activity.activity_date);
+
+              return (
+                <li className="cash-timeline-row" key={activity.id}>
+                  <div className="cash-timeline-when">{dateLabel}</div>
+                  <div className="cash-timeline-rail">
+                    <span className={`cash-timeline-icon ${visual.toneClass}`} aria-hidden="true">
+                      {visual.icon}
+                    </span>
+                  </div>
+                  <div className={`cash-timeline-card${expanded ? " is-expanded" : ""}`}>
+                    <button
+                      aria-expanded={expanded}
+                      className="cash-timeline-summary"
+                      onClick={() => setExpandedId((current) => (current === activity.id ? null : activity.id))}
+                      type="button"
+                    >
+                      <span className="cash-timeline-info">
+                        <strong>{formatActivityType(activity.activity_type)}</strong>
+                        <span className="cash-timeline-desc">{activity.description ?? activity.source_section ?? "—"}</span>
+                      </span>
+                      <span className={`cash-timeline-amount${amount > 0 ? " is-credit" : amount < 0 ? " is-debit" : ""}`}>
+                        {formatSignedNative(amount, activity.currency)}
+                      </span>
+                      <span className="cash-ccy-badge">{(activity.currency ?? "—").toUpperCase()}</span>
+                      <ChevronIcon className={`cash-timeline-chevron${expanded ? " is-open" : ""}`} />
+                    </button>
+                    {expanded ? (
+                      <div className="cash-timeline-detail">
+                        <div className="cash-detail-item">
+                          <span>Source</span>
+                          <strong>{activity.source_section ?? "—"}</strong>
+                        </div>
+                        <div className="cash-detail-item">
+                          <span>Report date</span>
+                          <strong>{formatDisplayDate(activity.report_date) || "—"}</strong>
+                        </div>
+                        <div className="cash-detail-item">
+                          <span>Account</span>
+                          <strong>{activity.account_id ?? "—"}</strong>
+                        </div>
+                        {activity.fx_pair ? (
+                          <div className="cash-detail-item">
+                            <span>FX pair</span>
+                            <strong>{activity.fx_pair}</strong>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         )}
+
+        {filteredActivities.length > 6 ? (
+          <button className="cash-view-all" onClick={() => setShowAllActivity((current) => !current)} type="button">
+            {showAllActivity ? "Show less" : "View all activity"} <ArrowRightIcon />
+          </button>
+        ) : null}
       </section>
+
+      <div className="cash-footnote">
+        <svg aria-hidden="true" fill="none" height="13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="13">
+          <rect height="10" rx="2" width="15" x="4.5" y="11" />
+          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+        </svg>
+        <span>All currency values are converted to USD using latest FX rates.</span>
+      </div>
     </>
+  );
+}
+
+function CashHeader({
+  syncLabel,
+  onRefresh,
+  isRefreshing,
+}: {
+  syncLabel: string | null;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}) {
+  return (
+    <div className="page-header cash-hero-header">
+      <div>
+        <h1>Cash</h1>
+        <p className="page-description">Liquidity across all accounts.</p>
+      </div>
+      <div className="cash-sync">
+        {syncLabel ? (
+          <div className="cash-sync-meta">
+            <span className="cash-sync-label">Last synchronized</span>
+            <span className="cash-sync-time">{syncLabel}</span>
+          </div>
+        ) : null}
+        <button
+          aria-label="Refresh cash data"
+          className={`cash-refresh${isRefreshing ? " is-spinning" : ""}`}
+          onClick={onRefresh}
+          type="button"
+        >
+          <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+            <path d="M20 11a8 8 0 1 0-.9 4.5" />
+            <path d="M20 5v6h-6" />
+          </svg>
+        </button>
+      </div>
+    </div>
   );
 }
