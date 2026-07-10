@@ -11,7 +11,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models import CashActivity, LotAnalysisDaily, PositionLot, RawFlexReport, Trade
-from app.services.ingestion_service import IngestionError, IngestionService
+from app.services.ingestion_service import (
+    IngestionError,
+    IngestionService,
+    _activities_from_cash_report,
+)
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "minimal_flex_statement.xml"
 
@@ -82,6 +86,27 @@ class IngestionServiceTest(unittest.TestCase):
             report = db.get(RawFlexReport, self.report_id)
             self.assertEqual(report.status, "failed")
             self.assertIn("Flex XML ingestion failed", report.error_message)
+
+
+class CashReportSummaryClassificationTest(unittest.TestCase):
+    def _summary_record(self, deposit_withdrawals: str) -> dict:
+        return {
+            "report_date": "2026-07-02",
+            "account_id": "U18361089",
+            "currency": "CNH",
+            "deposit_withdrawals": deposit_withdrawals,
+        }
+
+    def test_positive_deposit_withdrawals_is_classified_as_deposit(self) -> None:
+        [activity] = _activities_from_cash_report(self._summary_record("10000"))
+        self.assertEqual(activity["activity_type"], "DEPOSIT")
+        self.assertEqual(activity["description"], "Cash report deposit")
+        self.assertEqual(activity["amount"], Decimal("10000"))
+
+    def test_negative_deposit_withdrawals_is_classified_as_withdrawal(self) -> None:
+        [activity] = _activities_from_cash_report(self._summary_record("-2500"))
+        self.assertEqual(activity["activity_type"], "WITHDRAWAL")
+        self.assertEqual(activity["description"], "Cash report withdrawal")
 
 
 if __name__ == "__main__":

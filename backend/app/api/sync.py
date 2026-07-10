@@ -13,6 +13,7 @@ from app.schemas.sync import (
     SyncScheduleUpdate,
     SyncStatusResponse,
 )
+from app.services.ingestion_service import IngestionService
 from app.services.sync_runner import SyncBusyError, SyncRunner
 from app.services.sync_schedule import get_or_create_schedule, update_job_schedule, update_schedule
 from app.services.sync_service import SyncService
@@ -100,6 +101,13 @@ def run_sync_job(
     if sync_run is None:
         raise RuntimeError("Manual synchronization unexpectedly skipped")
     return SyncRunResponse.model_validate(sync_run)
+
+
+@router.post("/reingest")
+def reingest_reports(db: Session = Depends(get_db)) -> dict[str, int]:
+    """Re-ingest all archived Flex reports so stored rows adopt current parsing
+    and classification logic (no IBKR download)."""
+    return IngestionService().reingest_all(db)
 
 
 @router.get("/status", response_model=SyncStatusResponse)
