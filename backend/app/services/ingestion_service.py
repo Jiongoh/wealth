@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.business_data import (
@@ -97,6 +97,25 @@ class IngestionService:
         for model in (LotAnalysisDaily, CashActivity, PositionLot, Trade, CashReport, NavDaily):
             db.execute(delete(model).where(model.raw_flex_report_id == raw_flex_report_id))
 
+    def reingest_all(self, db: Session) -> dict[str, int]:
+        """Re-run ingestion for every archived Flex report.
+
+        `ingest_report` deletes and re-inserts each report's rows, so this lets
+        already-stored data pick up classifier changes without re-downloading
+        anything from IBKR. Reports whose archived XML is missing are counted as
+        failures and skipped; the rest are unaffected.
+        """
+        report_ids = list(db.scalars(select(RawFlexReport.id).order_by(RawFlexReport.id.asc())))
+        succeeded = 0
+        failed = 0
+        for report_id in report_ids:
+            try:
+                self.ingest_report(db, report_id)
+                succeeded += 1
+            except IngestionError:
+                failed += 1
+        return {"total": len(report_ids), "succeeded": succeeded, "failed": failed}
+
 
 def _report_date(parsed: dict[str, list[dict]]) -> object | None:
     for section in ("nav_daily", "positions_lot", "trades", "cash_report"):
@@ -186,10 +205,13 @@ def _activities_from_cash_report(record: dict) -> list[dict]:
     # CashReport is a period summary, not a balance feed for the Cash Activity table.
     # Only non-zero movement fields are emitted as a fallback when Flex Query does not
     # include CashTransactions / Deposits & Withdrawals detail.
+    # `activity_type = None` marks IBKR's combined "Deposits/Withdrawals" line:
+    # it lumps both directions into one signed field, so resolve it to
+    # DEPOSIT/WITHDRAWAL by the amount sign rather than labelling it OTHER.
     field_map = (
         ("deposits", "DEPOSIT", "Cash report deposits"),
         ("withdrawals", "WITHDRAWAL", "Cash report withdrawals"),
-        ("deposit_withdrawals", "OTHER", "Cash report deposit/withdrawal movement"),
+        ("deposit_withdrawals", None, None),
         ("dividends", "DIVIDEND", "Cash report dividends"),
         ("broker_interest_paid_received", "INTEREST", "Cash report broker interest"),
         ("commissions", "COMMISSION", "Cash report commissions"),
@@ -204,6 +226,12 @@ def _activities_from_cash_report(record: dict) -> list[dict]:
         amount = _first_decimal(record.get(field))
         if amount is None or amount == 0:
             continue
+        if activity_type is None:
+            resolved_type = "DEPOSIT" if amount > 0 else "WITHDRAWAL"
+            resolved_description = "Cash report deposit" if amount > 0 else "Cash report withdrawal"
+        else:
+            resolved_type = activity_type
+            resolved_description = description
         activities.append(
             {
                 "report_date": record.get("report_date"),
@@ -212,8 +240,8 @@ def _activities_from_cash_report(record: dict) -> list[dict]:
                 "account_id": record.get("account_id"),
                 "currency": _upper_or_none(record.get("currency")),
                 "amount": amount,
-                "activity_type": activity_type,
-                "description": description,
+                "activity_type": resolved_type,
+                "description": resolved_description,
                 "source_section": "CASH_REPORT_SUMMARY",
                 "symbol": None,
                 "fx_pair": None,
