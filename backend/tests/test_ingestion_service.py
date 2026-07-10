@@ -15,6 +15,7 @@ from app.services.ingestion_service import (
     IngestionError,
     IngestionService,
     _activities_from_cash_report,
+    _commission_activity_from_trade,
 )
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "minimal_flex_statement.xml"
@@ -107,6 +108,60 @@ class CashReportSummaryClassificationTest(unittest.TestCase):
         [activity] = _activities_from_cash_report(self._summary_record("-2500"))
         self.assertEqual(activity["activity_type"], "WITHDRAWAL")
         self.assertEqual(activity["description"], "Cash report withdrawal")
+
+    def test_commissions_field_no_longer_emits_aggregate_row(self) -> None:
+        record = {
+            "report_date": "2026-07-02",
+            "account_id": "U18361089",
+            "currency": "USD",
+            "commissions": "-1.40",
+        }
+        self.assertEqual(_activities_from_cash_report(record), [])
+
+
+class CommissionFromTradeTest(unittest.TestCase):
+    def _trade(self, **overrides) -> dict:
+        record = {
+            "asset_class": "STK",
+            "symbol": "MU",
+            "buy_sell": "BUY",
+            "quantity": "0.056",
+            "ib_commission": "-0.35",
+            "ib_commission_currency": "USD",
+            "transaction_id": "tid-1",
+            "trade_date": "2026-06-05",
+            "account_id": "U18361089",
+        }
+        record.update(overrides)
+        return record
+
+    def test_buy_commission_is_attributed_to_side_and_symbol(self) -> None:
+        activity = _commission_activity_from_trade(self._trade())
+        self.assertEqual(activity["activity_type"], "COMMISSION")
+        self.assertEqual(activity["description"], "Buy 0.056 MU")
+        self.assertEqual(activity["symbol"], "MU")
+        self.assertEqual(activity["currency"], "USD")
+        self.assertEqual(activity["amount"], Decimal("-0.35"))
+        self.assertEqual(activity["source_section"], "TRADES")
+        self.assertEqual(activity["related_trade_id"], "tid-1")
+        self.assertEqual(activity["external_id"], "commission-tid-1")
+
+    def test_sell_commission_uses_sell_label_and_absolute_quantity(self) -> None:
+        activity = _commission_activity_from_trade(
+            self._trade(buy_sell="SELL", quantity="-0.14", symbol="SNDK", transaction_id="tid-2")
+        )
+        self.assertEqual(activity["description"], "Sell 0.14 SNDK")
+
+    def test_zero_or_missing_commission_is_skipped(self) -> None:
+        self.assertIsNone(_commission_activity_from_trade(self._trade(ib_commission="0")))
+        self.assertIsNone(_commission_activity_from_trade(self._trade(ib_commission=None)))
+
+    def test_fx_conversion_trade_is_skipped(self) -> None:
+        self.assertIsNone(
+            _commission_activity_from_trade(
+                self._trade(asset_class="CASH", symbol="HKD.USD", ib_commission="-0.02")
+            )
+        )
 
 
 if __name__ == "__main__":

@@ -108,19 +108,23 @@ const DEMO_ACTIVITIES: CashActivity[] = [
     id: 2,
     activity_date: "2026-06-05",
     currency: "USD",
-    amount: -0.7,
+    amount: -0.35,
     activity_type: "COMMISSION",
-    description: "Cash report commissions",
-    source_section: "Commissions",
+    description: "Buy 0.056 MU",
+    source_section: "TRADES",
+    symbol: "MU",
+    related_trade_id: "demo-mu-1",
   }),
   demoActivity({
     id: 3,
     activity_date: "2026-06-05",
     currency: "USD",
-    amount: -0.7,
+    amount: -0.35,
     activity_type: "COMMISSION",
-    description: "Cash report commissions",
-    source_section: "Commissions",
+    description: "Sell 0.14 SNDK",
+    source_section: "TRADES",
+    symbol: "SNDK",
+    related_trade_id: "demo-sndk-2",
   }),
   demoActivity({
     id: 4,
@@ -156,21 +160,25 @@ const DEMO_ACTIVITIES: CashActivity[] = [
   }),
   demoActivity({
     id: 7,
-    activity_date: "2026-05-22",
+    activity_date: "2026-05-28",
     currency: "USD",
     amount: -0.35,
     activity_type: "COMMISSION",
-    description: "Cash report commissions",
-    source_section: "Commissions",
+    description: "Buy 0.116 LITE",
+    source_section: "TRADES",
+    symbol: "LITE",
+    related_trade_id: "demo-lite-1",
   }),
   demoActivity({
     id: 8,
-    activity_date: "2026-05-20",
+    activity_date: "2026-05-26",
     currency: "USD",
     amount: -0.35,
     activity_type: "COMMISSION",
-    description: "Cash report commissions",
-    source_section: "Commissions",
+    description: "Sell 1 IREN",
+    source_section: "TRADES",
+    symbol: "IREN",
+    related_trade_id: "demo-iren-1",
   }),
 ];
 
@@ -926,6 +934,18 @@ export function CashView() {
                           <span>Account</span>
                           <strong>{activity.account_id ?? "—"}</strong>
                         </div>
+                        {activity.symbol ? (
+                          <div className="cash-detail-item">
+                            <span>Symbol</span>
+                            <strong>{activity.symbol}</strong>
+                          </div>
+                        ) : null}
+                        {activity.related_trade_id ? (
+                          <div className="cash-detail-item">
+                            <span>Trade ref</span>
+                            <strong>{activity.related_trade_id}</strong>
+                          </div>
+                        ) : null}
                         {activity.fx_pair ? (
                           <div className="cash-detail-item">
                             <span>FX pair</span>

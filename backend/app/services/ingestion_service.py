@@ -140,6 +140,9 @@ def _cash_activity_records(parsed: dict[str, list[dict]]) -> list[dict]:
         activity = _activity_from_trade(record)
         if activity is not None:
             records.append(activity)
+        commission = _commission_activity_from_trade(record)
+        if commission is not None:
+            records.append(commission)
     for record in parsed.get("cash_report", []):
         records.extend(_activities_from_cash_report(record))
     return records
@@ -201,6 +204,64 @@ def _activity_from_trade(record: dict) -> dict | None:
     }
 
 
+def _commission_activity_from_trade(record: dict) -> dict | None:
+    """Emit a COMMISSION activity for a single share trade.
+
+    Replaces the CashReport aggregate commission line: each commission is tied
+    to a specific buy/sell execution (side + quantity + symbol) via
+    `related_trade_id`. FX-conversion trades are skipped — their commission is
+    already embedded in the conversion's net amount (the FX_CONVERSION row).
+    """
+    if is_fx_conversion_record(record):
+        return None
+    commission = _first_nonzero_decimal(record.get("ib_commission"))
+    if commission is None or commission == 0:
+        return None
+    symbol = record.get("symbol")
+    side = _trade_side_label(record.get("buy_sell"))
+    quantity = _format_quantity(record.get("quantity"))
+    trade_id = record.get("transaction_id") or record.get("ib_execution_id")
+    activity_datetime = record.get("datetime")
+    if symbol and quantity:
+        description = f"{side} {quantity} {symbol}"
+    elif symbol:
+        description = f"{side} {symbol}"
+    else:
+        description = f"{side} share trade"
+    return {
+        "report_date": record.get("report_date"),
+        "activity_date": _activity_date(record.get("trade_date"), activity_datetime, record.get("report_date")),
+        "activity_datetime": activity_datetime,
+        "account_id": record.get("account_id"),
+        "currency": _upper_or_none(record.get("ib_commission_currency") or record.get("currency")),
+        "amount": commission,
+        "activity_type": "COMMISSION",
+        "description": description,
+        "source_section": "TRADES",
+        "symbol": symbol,
+        "fx_pair": None,
+        "related_trade_id": trade_id,
+        "external_id": f"commission-{trade_id}" if trade_id else f"commission-{_fallback_external_id(record)}",
+    }
+
+
+def _trade_side_label(value: object) -> str:
+    side = str(value or "").strip().upper()
+    if side == "BUY":
+        return "Buy"
+    if side == "SELL":
+        return "Sell"
+    return side.title() if side else "Trade"
+
+
+def _format_quantity(value: object) -> str:
+    number = _first_decimal(value)
+    if number is None:
+        return ""
+    # Drop trailing zeros but avoid scientific notation for whole numbers.
+    return format(abs(number).normalize(), "f")
+
+
 def _activities_from_cash_report(record: dict) -> list[dict]:
     # CashReport is a period summary, not a balance feed for the Cash Activity table.
     # Only non-zero movement fields are emitted as a fallback when Flex Query does not
@@ -214,7 +275,10 @@ def _activities_from_cash_report(record: dict) -> list[dict]:
         ("deposit_withdrawals", None, None),
         ("dividends", "DIVIDEND", "Cash report dividends"),
         ("broker_interest_paid_received", "INTEREST", "Cash report broker interest"),
-        ("commissions", "COMMISSION", "Cash report commissions"),
+        # `commissions` is intentionally omitted here: rather than the CashReport
+        # period aggregate, commissions are emitted per trade by
+        # `_commission_activity_from_trade` so each is attributable to a
+        # specific buy/sell.
         ("withholding_tax", "TAX", "Cash report withholding tax"),
         ("transaction_tax", "TAX", "Cash report transaction tax"),
         ("other_fees", "FEE", "Cash report other fees"),
