@@ -564,7 +564,19 @@ function CashChangesIllustration() {
 // ---------------------------------------------------------------------------
 // Main view
 // ---------------------------------------------------------------------------
-type CashFilterState = { currency: string; activityType: string };
+type CashFilterState = {
+  currency: string;
+  activityType: string;
+  startDate: string;
+  endDate: string;
+};
+
+const EMPTY_CASH_FILTERS: CashFilterState = {
+  currency: "",
+  activityType: "",
+  startDate: "",
+  endDate: "",
+};
 
 export function CashView() {
   const [timeseries, setTimeseries] = useState<CashBalanceTimeseriesResponse | null>(null);
@@ -575,7 +587,7 @@ export function CashView() {
   const [isDemo, setIsDemo] = useState(false);
 
   const [filterOpen, setFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<CashFilterState>({ currency: "", activityType: "" });
+  const [filters, setFilters] = useState<CashFilterState>(EMPTY_CASH_FILTERS);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -644,9 +656,18 @@ export function CashView() {
       if (filters.activityType && (activity.activity_type ?? "").toUpperCase() !== filters.activityType) {
         return false;
       }
+      const activityDate = activity.activity_date ?? activity.activity_datetime?.slice(0, 10) ?? "";
+      if (filters.startDate && (!activityDate || activityDate < filters.startDate)) {
+        return false;
+      }
+      if (filters.endDate && (!activityDate || activityDate > filters.endDate)) {
+        return false;
+      }
       return true;
     });
   }, [allActivities, filters]);
+
+  const hasActiveFilters = Object.values(filters).some(Boolean);
 
   const narrative = useMemo(() => buildNarrative(allActivities), [allActivities]);
 
@@ -869,10 +890,28 @@ export function CashView() {
               </select>
               <ChevronIcon className="cash-filter-chevron" />
             </label>
-            {filters.currency || filters.activityType ? (
+            <label className="cash-filter-field cash-filter-date">
+              <span>Start date</span>
+              <input
+                max={filters.endDate || undefined}
+                onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
+                type="date"
+                value={filters.startDate}
+              />
+            </label>
+            <label className="cash-filter-field cash-filter-date">
+              <span>End date</span>
+              <input
+                min={filters.startDate || undefined}
+                onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
+                type="date"
+                value={filters.endDate}
+              />
+            </label>
+            {hasActiveFilters ? (
               <button
                 className="cash-filter-reset"
-                onClick={() => setFilters({ currency: "", activityType: "" })}
+                onClick={() => setFilters(EMPTY_CASH_FILTERS)}
                 type="button"
               >
                 Reset

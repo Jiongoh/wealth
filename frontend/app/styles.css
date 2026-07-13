@@ -10433,7 +10433,8 @@ body:has(.dashboard-page) {
   font-weight: 600;
 }
 
-.cash-filter-field select {
+.cash-filter-field select,
+.cash-filter-field input {
   appearance: none;
   background: #faf8f5;
   border: 1px solid var(--border);
@@ -10448,7 +10449,14 @@ body:has(.dashboard-page) {
   transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.cash-filter-field select:focus {
+.cash-filter-field input {
+  cursor: text;
+  min-width: 150px;
+  padding-right: 12px;
+}
+
+.cash-filter-field select:focus,
+.cash-filter-field input:focus {
   border-color: rgba(169, 88, 62, 0.44);
   box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.2);
   outline: none;
@@ -10812,6 +10820,20 @@ body:has(.dashboard-page) {
   .cash-timeline-card {
     grid-column: 2;
     grid-row: 2;
+  }
+
+  .cash-filter-bar {
+    align-items: stretch;
+  }
+
+  .cash-filter-field,
+  .cash-filter-field select,
+  .cash-filter-field input {
+    width: 100%;
+  }
+
+  .cash-filter-reset {
+    align-self: flex-start;
   }
 
   .cash-timeline-summary {
