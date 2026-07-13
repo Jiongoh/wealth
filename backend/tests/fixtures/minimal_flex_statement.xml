@@ -15,11 +15,11 @@
       <Trades>
         <Trade accountId="TEST_ACCOUNT" reportDate="20260131" assetCategory="STK"
           symbol="DEMO" conid="1001" dateTime="20260110;101500" tradeDate="20260110" quantity="1"
-          tradePrice="18.50" fifoPnlRealized="" ibExecID="EXEC_TEST_1"
+          tradePrice="18.50" fifoPnlRealized="" buySell="BUY" ibExecID="EXEC_TEST_1"
           levelOfDetail="EXECUTION" />
         <Trade accountId="TEST_ACCOUNT" reportDate="20260131" assetCategory="STK"
           symbol="DEMO" conid="1001" tradeDate="20260110" quantity="1" cost="18.50"
-          fifoPnlRealized="1.25" levelOfDetail="CLOSED_LOT" />
+          fifoPnlRealized="1.25" buySell="SELL" levelOfDetail="CLOSED_LOT" />
         <Trade accountId="TEST_ACCOUNT" symbol="DEMO" levelOfDetail="ORDER" />
       </Trades>
       <CashReport>
