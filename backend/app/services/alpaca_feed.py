@@ -29,20 +29,6 @@ def resolve_alpaca_feed(feed_mode: str, now: datetime | None = None) -> str:
     return "iex"
 
 
-def next_alpaca_feed_switch(feed_mode: str, now: datetime | None = None) -> datetime | None:
-    if feed_mode.lower() != "auto":
-        return None
-
-    current = (now or datetime.now(NEW_YORK_TZ)).astimezone(NEW_YORK_TZ)
-    today_4 = current.replace(hour=4, minute=0, second=0, microsecond=0)
-    today_20 = current.replace(hour=20, minute=0, second=0, microsecond=0)
-    if current < today_4:
-        return today_4
-    if current < today_20:
-        return today_20
-    return today_4 + timedelta(days=1)
-
-
 def resolve_market_data_route(feed_mode: str, now: datetime | None = None) -> MarketDataRoute:
     normalized = feed_mode.lower()
     if normalized in {"iex", "overnight"}:

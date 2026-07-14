@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BaseModal } from "@/components/BaseModal";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import {
   api,
-  ApiError,
   type DecimalValue,
   type MarketQuote,
   type MarketSubscriptionPlan,
@@ -39,14 +38,10 @@ function SubscriptionBadge({ source }: { source: SubscriptionSource }) {
   return null;
 }
 
-const MAX_TAGS_PER_TICKER = 5;
-const MAX_TAGS_PER_REQUEST = 5;
 const MAX_SELECTED_FILTER_TAGS = 5;
 const TAG_FILTER_COLLAPSED_COUNT = 6;
 // Tracked-ticker cards lazy-load in batches as the page scrolls (no pager).
 const WATCHLIST_PAGE_SIZE = 24;
-// Existing-tickers list lazy-loads in batches as the modal scrolls (no nested scrollbar).
-const TICKER_PAGE_INCREMENT = 12;
 const DEFAULT_TAG_COLOR = "#F7DFA6";
 // A wide, hue-spread palette so tag colours are auto-assigned (no manual picker)
 // with strong visual separation. Ordered so adjacent entries contrast; a colour
@@ -96,75 +91,10 @@ function pickTagColor(existing: WatchlistTag[]): string {
   return best;
 }
 
-const EMPTY_TICKER_FORM: TickerForm = { symbol: "", displayName: "", selectedTags: [], newTag: "", notes: "" };
-
-// Header-less panel modal — the design's management surfaces supply their own
-// headers (Done button, back arrow, step counters), so this only provides the
-// overlay, scroll-lock, and Escape handling.
-function PanelModal({
-  open,
-  onClose,
-  className,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  className?: string;
-  children: ReactNode;
-}) {
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open, onClose]);
-  if (!open) {
-    return null;
-  }
-  return (
-    <div className="modal-overlay" onMouseDown={onClose} role="presentation">
-      <section
-        aria-modal="true"
-        className={`wl-panel${className ? ` ${className}` : ""}`}
-        onMouseDown={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        {children}
-      </section>
-    </div>
-  );
-}
-
 type WatchlistRow = WatchlistItem & {
   status: string;
   actions: string;
   tagList: string;
-};
-
-type TickerForm = {
-  symbol: string;
-  displayName: string;
-  selectedTags: string[];
-  newTag: string;
-  notes: string;
-};
-
-type EditForm = {
-  symbol: string;
-  selectedTags: string[];
-  tagInput: string;
-  notes: string;
 };
 
 
@@ -194,38 +124,6 @@ function formatCloseDate(value: string | null): string {
   return Number.isNaN(date.getTime())
     ? value
     : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function parseTags(value: string): string[] {
-  const tags: string[] = [];
-  const seen = new Set<string>();
-
-  value.split(",").forEach((rawTag) => {
-    const tag = rawTag.trim();
-    const key = tag.toLocaleLowerCase();
-    if (!tag || seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    tags.push(tag);
-  });
-
-  return tags;
-}
-
-function addUniqueTags(current: string[], additions: string[]): string[] {
-  const next = [...current];
-  const seen = new Set(current.map((tag) => tag.toLocaleLowerCase()));
-
-  additions.forEach((tag) => {
-    const key = tag.toLocaleLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      next.push(tag);
-    }
-  });
-
-  return next;
 }
 
 function tagColor(tag: string, tags: WatchlistTag[]): string {
@@ -418,25 +316,12 @@ export function WatchlistView() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(WATCHLIST_PAGE_SIZE);
   const watchlistSentinelRef = useRef<HTMLDivElement | null>(null);
-  const [manageOpen, setManageOpen] = useState(false);
-  const [manageTab, setManageTab] = useState<"tickers" | "tags">("tickers");
-  const [tickerRenderLimit, setTickerRenderLimit] = useState(TICKER_PAGE_INCREMENT);
-  const tickerSentinelRef = useRef<HTMLDivElement | null>(null);
-  const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
-  const [form, setForm] = useState<TickerForm>(EMPTY_TICKER_FORM);
-  const [tagForm, setTagForm] = useState("");
-  const [editingTagId, setEditingTagId] = useState<number | null>(null);
-  const [editingTagName, setEditingTagName] = useState("");
-  // Tag actions menu: fixed-positioned so it escapes the modal's scroll clip.
-  const [tagMenu, setTagMenu] = useState<{ id: number; left: number; top: number } | null>(null);
-  const [editForm, setEditForm] = useState<EditForm>({ symbol: "", selectedTags: [], tagInput: "", notes: "" });
+  const [symbolQuery, setSymbolQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dialogError, setDialogError] = useState<string | null>(null);
   const [filterNotice, setFilterNotice] = useState<string | null>(null);
   const [symbolResults, setSymbolResults] = useState<SymbolSearchResult[]>([]);
-  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
   const [isSymbolSearching, setIsSymbolSearching] = useState(false);
   const [symbolSearchError, setSymbolSearchError] = useState<string | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<MarketSubscriptionPlan | null>(null);
@@ -452,13 +337,8 @@ export function WatchlistView() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   // True when the backend was unreachable and we rendered the demo dataset.
   const [isDemo, setIsDemo] = useState(false);
-  const [newTagOpen, setNewTagOpen] = useState(false);
   const [manageSubscriptionOpen, setManageSubscriptionOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
-  // Themed tag-dot tooltip. Rendered fixed at the page level (with viewport
-  // coordinates captured on hover) so it escapes the watchlist panel's
-  // overflow:hidden clip instead of using an absolutely-positioned child.
-  const [tagTip, setTagTip] = useState<{ text: string; left: number; top: number } | null>(null);
   // ---- Explicit management surfaces --------------------------------------------
   // Three separated modes: view · edit · add.
   // TAGS — inline "Edit themes" mode (delete/rename/reorder) + a lightweight
@@ -482,8 +362,6 @@ export function WatchlistView() {
   const [drawerTagQuery, setDrawerTagQuery] = useState("");
   const [createNewList, setCreateNewList] = useState(false);
   const [newListName, setNewListName] = useState("");
-  // Hover-revealed edit control per card.
-  const [hoverCard, setHoverCard] = useState<number | null>(null);
   // Long-press (1.5s) on any tag/ticker is a secondary way to enter Edit themes.
   const longPressRef = useRef<number | null>(null);
   const longPressFiredRef = useRef(false);
@@ -615,29 +493,6 @@ export function WatchlistView() {
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
-  // Close the custom-tag action menu on outside click or any scroll (the menu
-  // is fixed-positioned, so scrolling would otherwise detach it from the pill).
-  useEffect(() => {
-    if (tagMenu === null) {
-      return;
-    }
-    function handlePointerDown(event: globalThis.MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (!target || (!target.closest(".tag-manage-pill-wrap") && !target.closest(".tag-menu-popover"))) {
-        setTagMenu(null);
-      }
-    }
-    function handleScroll() {
-      setTagMenu(null);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("scroll", handleScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [tagMenu]);
-
   // Block navigation to the details page for symbols without realtime data; a
   // toast explains they must subscribe first.
   function guardDetailsNavigation(item: WatchlistItem, event: { preventDefault: () => void }) {
@@ -684,47 +539,17 @@ export function WatchlistView() {
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [quickAddOpen, newTagPopoverOpen]);
 
-  // Reset the lazy-load window whenever the modal opens or the Tickers tab is shown.
-  useEffect(() => {
-    if (manageOpen && manageTab === "tickers") {
-      setTickerRenderLimit(TICKER_PAGE_INCREMENT);
-    }
-  }, [manageOpen, manageTab]);
-
-  // Grow the rendered window as the sentinel scrolls into view (infinite scroll).
-  useEffect(() => {
-    if (!manageOpen || manageTab !== "tickers") {
-      return;
-    }
-    const sentinel = tickerSentinelRef.current;
-    if (!sentinel) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setTickerRenderLimit((current) => current + TICKER_PAGE_INCREMENT);
-        }
-      },
-      { rootMargin: "120px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [manageOpen, manageTab, tickerRenderLimit, items]);
-
   useEffect(() => {
     if (!quickAddOpen) {
       setSymbolResults([]);
-      setSymbolSearchOpen(false);
       setIsSymbolSearching(false);
       setSymbolSearchError(null);
       return;
     }
 
-    const query = form.symbol.trim();
+    const query = symbolQuery.trim();
     if (!query) {
       setSymbolResults([]);
-      setSymbolSearchOpen(false);
       setIsSymbolSearching(false);
       setSymbolSearchError(null);
       return;
@@ -737,7 +562,6 @@ export function WatchlistView() {
           (r) => r.symbol.toLocaleLowerCase().includes(q) || (r.name ?? "").toLocaleLowerCase().includes(q),
         ),
       );
-      setSymbolSearchOpen(true);
       setIsSymbolSearching(false);
       return;
     }
@@ -750,14 +574,12 @@ export function WatchlistView() {
         .searchSymbols({ q: query, limit: 20 }, { signal: controller.signal })
         .then((results) => {
           setSymbolResults(results);
-          setSymbolSearchOpen(true);
         })
         .catch((requestError: unknown) => {
           if (requestError instanceof DOMException && requestError.name === "AbortError") {
             return;
           }
           setSymbolResults([]);
-          setSymbolSearchOpen(true);
           setSymbolSearchError(requestError instanceof Error ? requestError.message : "Symbol search failed.");
         })
         .finally(() => {
@@ -771,192 +593,7 @@ export function WatchlistView() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [form.symbol, quickAddOpen, isDemo]);
-
-  async function addTicker(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const symbol = form.symbol.trim().toUpperCase();
-    const parsedTags = addUniqueTags(form.selectedTags, parseTags(form.newTag));
-    if (!symbol) {
-      setDialogError("Symbol is required.");
-      return;
-    }
-    if (parsedTags.length > MAX_TAGS_PER_TICKER) {
-      setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
-      return;
-    }
-    // Symbols are unique in the watchlist. Block a duplicate add up front (the
-    // backend also rejects with 409) so we never overwrite an existing entry.
-    if ((items ?? []).some((entry) => entry.symbol.toUpperCase() === symbol)) {
-      setDialogError(`${symbol} is already in your watchlist.`);
-      setToast({ message: `${symbol} is already in your watchlist.`, tone: "error" });
-      return;
-    }
-    if (isDemo) {
-      const maxId = (items ?? []).reduce((m, it) => Math.max(m, it.id), 0);
-      const newItem: WatchlistItem = {
-        id: maxId + 1,
-        symbol,
-        display_name: form.displayName.trim() || null,
-        notes: form.notes.trim() || null,
-        realtime_enabled: false,
-        tags: parsedTags,
-        has_position: false,
-        latest_report_date: null,
-        position_quantity: null,
-        current_price: null,
-        market_value: null,
-        unrealized_pnl: null,
-        updated_at: new Date().toISOString(),
-      };
-      setItems((current) => [...(current ?? []), newItem]);
-      resetTickerForm();
-      setQuickAddOpen(false);
-      setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
-      return;
-    }
-    setIsSaving(true);
-    setDialogError(null);
-    try {
-      // Only allow symbols that exist in the Nasdaq Symbol Directory; reject
-      // anything else before creating a watchlist record. Modal stays open.
-      try {
-        await api.symbolInfo(symbol);
-      } catch (lookupError: unknown) {
-        if (lookupError instanceof ApiError && lookupError.status === 404) {
-          setDialogError(`${symbol} was not found in the symbol directory.`);
-          setToast({ message: `Couldn't add ${symbol}: not a recognised symbol.`, tone: "error" });
-        } else {
-          setDialogError(lookupError instanceof Error ? lookupError.message : "Symbol lookup failed.");
-          setToast({ message: `Couldn't add ${symbol}. Please try again.`, tone: "error" });
-        }
-        return;
-      }
-
-      await api.createWatchlistTicker({
-        symbol,
-        tags: parsedTags,
-        display_name: form.displayName.trim() || null,
-        notes: form.notes.trim() || null,
-      });
-      resetTickerForm();
-      setVisibleCount(WATCHLIST_PAGE_SIZE);
-      await loadWatchlist();
-      setQuickAddOpen(false);
-      setToast({ message: `Added ${symbol} to your watchlist.`, tone: "success" });
-    } catch (requestError: unknown) {
-      if (requestError instanceof ApiError && requestError.status === 409) {
-        setDialogError(`${symbol} is already in your watchlist.`);
-        setToast({ message: `${symbol} is already in your watchlist.`, tone: "error" });
-      } else {
-        setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
-        setToast({ message: `Couldn't add ${symbol}. Please try again.`, tone: "error" });
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function addTags(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const parsedTags = parseTags(tagForm);
-    if (parsedTags.length === 0) {
-      setDialogError("Enter at least one tag.");
-      return;
-    }
-    if (parsedTags.length > MAX_TAGS_PER_REQUEST) {
-      setDialogError(`You can add at most ${MAX_TAGS_PER_REQUEST} tags at once.`);
-      return;
-    }
-    setIsSaving(true);
-    setDialogError(null);
-    try {
-      const nextTags = await api.createWatchlistTags(parsedTags);
-      setTags(nextTags);
-      setTagForm("");
-      await loadWatchlist();
-      setSelectedTags([]);
-      setHoldingOnly(false);
-      setVisibleCount(WATCHLIST_PAGE_SIZE);
-    } catch (requestError: unknown) {
-      setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  function startTagEdit(tag: WatchlistTag) {
-    setEditingTagId(tag.id);
-    setEditingTagName(tag.name);
-    setTagMenu(null);
-    setDialogError(null);
-  }
-
-  function toggleTagMenu(tagId: number, event: { currentTarget: HTMLElement }) {
-    setDialogError(null);
-    // Read the trigger's rect synchronously: React nulls event.currentTarget
-    // once the handler returns, so it must not be touched inside the (deferred)
-    // state updater below.
-    const rect = event.currentTarget.getBoundingClientRect();
-    // Keep the menu (min-width ~140px) within the viewport for right-edge pills.
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 152));
-    setTagMenu((current) =>
-      current?.id === tagId ? null : { id: tagId, left, top: rect.bottom + 6 },
-    );
-  }
-
-  async function saveTagEdit(tagId: number) {
-    const name = editingTagName.trim();
-    if (!name) {
-      setDialogError("Tag name is required.");
-      return;
-    }
-    setIsSaving(true);
-    setDialogError(null);
-    try {
-      await api.updateWatchlistTag(tagId, { name });
-      setEditingTagId(null);
-      setEditingTagName("");
-      setSelectedTags([]);
-      setHoldingOnly(false);
-      setVisibleCount(WATCHLIST_PAGE_SIZE);
-      await loadWatchlist();
-    } catch (requestError: unknown) {
-      setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function deleteGlobalTag(tag: WatchlistTag) {
-    const confirmed = window.confirm(
-      `Delete tag "${tag.name}"? This will remove it from all tickers, but will not delete any ticker.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-    setIsSaving(true);
-    setDialogError(null);
-    try {
-      await api.deleteWatchlistTag(tag.id);
-      setEditingTagId(null);
-      setEditingTagName("");
-      setSelectedTags([]);
-      setHoldingOnly(false);
-      setVisibleCount(WATCHLIST_PAGE_SIZE);
-      await loadWatchlist();
-      setEditForm((current) => ({
-        ...current,
-        selectedTags: current.selectedTags.filter(
-          (selectedTag) => selectedTag.toLocaleLowerCase() !== tag.name.toLocaleLowerCase(),
-        ),
-      }));
-    } catch (requestError: unknown) {
-      setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
+  }, [symbolQuery, quickAddOpen, isDemo]);
 
   // ----- Inline tag management (demo-aware) -----------------------------------
   // In demo mode the API is unreachable, so these mutate local state optimistically
@@ -1075,7 +712,7 @@ export function WatchlistView() {
   // ----- 3-step Add symbol flow ----------------------------------------------
   // ----- Stage 1: quick-add popover ------------------------------------------
   function openQuickAdd() {
-    setForm(EMPTY_TICKER_FORM);
+    setSymbolQuery("");
     setQuickAddTags([]);
     setSymbolResults([]);
     setSymbolSearchError(null);
@@ -1223,61 +860,6 @@ export function WatchlistView() {
   }
 
 
-  function startEdit(row: WatchlistItem) {
-    setEditingSymbol(row.symbol);
-    setDialogError(null);
-    setEditForm({
-      symbol: row.symbol,
-      selectedTags: row.tags,
-      tagInput: "",
-      notes: row.notes ?? "",
-    });
-  }
-
-  async function saveEdit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editingSymbol) {
-      return;
-    }
-    const nextTags = addUniqueTags(editForm.selectedTags, parseTags(editForm.tagInput));
-    if (nextTags.length > MAX_TAGS_PER_TICKER) {
-      setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
-      return;
-    }
-    setIsSaving(true);
-    setDialogError(null);
-    try {
-      await api.updateWatchlistTicker(editingSymbol, {
-        tags: nextTags,
-        notes: editForm.notes.trim() || null,
-      });
-      setEditingSymbol(null);
-      setVisibleCount(WATCHLIST_PAGE_SIZE);
-      await loadWatchlist();
-    } catch (requestError: unknown) {
-      setDialogError(requestError instanceof Error ? requestError.message : "Request failed.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  function addEditInputTags() {
-    const nextTags = addUniqueTags(editForm.selectedTags, parseTags(editForm.tagInput));
-    if (nextTags.length > MAX_TAGS_PER_TICKER) {
-      setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
-      return;
-    }
-    setDialogError(null);
-    setEditForm((current) => ({ ...current, selectedTags: nextTags, tagInput: "" }));
-  }
-
-  function removeEditTag(tagToRemove: string) {
-    setEditForm((current) => ({
-      ...current,
-      selectedTags: current.selectedTags.filter((tag) => tag.toLocaleLowerCase() !== tagToRemove.toLocaleLowerCase()),
-    }));
-  }
-
   async function deleteTicker(symbol: string) {
     const confirmed = window.confirm(
       `Delete ticker "${symbol}" from your watchlist? This will not delete any IBKR position, lot, trade, or cash data.`,
@@ -1292,12 +874,8 @@ export function WatchlistView() {
     }
     setIsSaving(true);
     setError(null);
-    setDialogError(null);
     try {
       await api.deleteWatchlistTicker(symbol);
-      if (editingSymbol === symbol) {
-        setEditingSymbol(null);
-      }
       setVisibleCount(WATCHLIST_PAGE_SIZE);
       await loadWatchlist();
     } catch (requestError: unknown) {
@@ -1354,77 +932,6 @@ export function WatchlistView() {
       return [...current, tag];
     });
     setVisibleCount(WATCHLIST_PAGE_SIZE);
-  }
-
-  function selectSymbolResult(result: SymbolSearchResult) {
-    setForm((current) => ({
-      ...current,
-      symbol: result.symbol.toUpperCase(),
-      // Autofill the company name from search; keep any name the user already typed.
-      displayName: current.displayName.trim() || (result.name ?? ""),
-    }));
-    setSymbolResults([]);
-    setSymbolSearchOpen(false);
-    setSymbolSearchError(null);
-  }
-
-  function toggleAddFormTag(tagName: string) {
-    setForm((current) => {
-      const exists = current.selectedTags.some((tag) => tag.toLocaleLowerCase() === tagName.toLocaleLowerCase());
-      if (exists) {
-        return {
-          ...current,
-          selectedTags: current.selectedTags.filter((tag) => tag.toLocaleLowerCase() !== tagName.toLocaleLowerCase()),
-        };
-      }
-      if (current.selectedTags.length >= MAX_TAGS_PER_TICKER) {
-        setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
-        return current;
-      }
-      setDialogError(null);
-      return { ...current, selectedTags: [...current.selectedTags, tagName] };
-    });
-  }
-
-  function addNewFormTag() {
-    const next = addUniqueTags(form.selectedTags, parseTags(form.newTag));
-    if (next.length > MAX_TAGS_PER_TICKER) {
-      setDialogError(`Each ticker can have at most ${MAX_TAGS_PER_TICKER} tags.`);
-      return;
-    }
-    setDialogError(null);
-    setForm((current) => ({ ...current, selectedTags: next, newTag: "" }));
-  }
-
-  function resetTickerForm() {
-    setForm(EMPTY_TICKER_FORM);
-    setNewTagOpen(false);
-    setSymbolResults([]);
-    setSymbolSearchOpen(false);
-    setIsSymbolSearching(false);
-    setSymbolSearchError(null);
-  }
-
-  function openManage(tab: "tickers" | "tags") {
-    setDialogError(null);
-    setEditingTagId(null);
-    setEditingTagName("");
-    setManageTab(tab);
-    setManageOpen(true);
-  }
-
-  function closeManage() {
-    setManageOpen(false);
-    setDialogError(null);
-    setEditingTagId(null);
-    setEditingTagName("");
-    setTagMenu(null);
-    resetTickerForm();
-  }
-
-  function startManagedTickerEdit(row: WatchlistItem) {
-    setManageOpen(false);
-    startEdit(row);
   }
 
   const subscribedSet = useMemo(
@@ -1684,15 +1191,15 @@ export function WatchlistView() {
           autoFocus
           className="wl-input wl-search-input"
           placeholder="Search symbol — e.g. NVDA"
-          value={form.symbol}
-          onChange={(event) => setForm((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))}
+          value={symbolQuery}
+          onChange={(event) => setSymbolQuery(event.target.value.toUpperCase())}
         />
       </div>
       <div className="quick-add-list">
         {isSymbolSearching ? <div className="symbol-search-status">Searching…</div> : null}
         {symbolSearchError ? <div className="symbol-search-status symbol-search-error">{symbolSearchError}</div> : null}
-        {!form.symbol.trim() ? <div className="symbol-search-status">Type a ticker or company name.</div> : null}
-        {form.symbol.trim() && !isSymbolSearching && symbolResults.length === 0 ? (
+        {!symbolQuery.trim() ? <div className="symbol-search-status">Type a ticker or company name.</div> : null}
+        {symbolQuery.trim() && !isSymbolSearching && symbolResults.length === 0 ? (
           <div className="symbol-search-status">No matching symbols</div>
         ) : null}
         {symbolResults.slice(0, 6).map((result) => {
@@ -1771,11 +1278,6 @@ export function WatchlistView() {
             </svg>
           </span>
           {toast.message}
-        </div>
-      ) : null}
-      {tagTip ? (
-        <div className="ticker-tag-tip" role="tooltip" style={{ left: tagTip.left, top: tagTip.top }}>
-          {tagTip.text}
         </div>
       ) : null}
       <div className="page-header watchlist-hero-header">
@@ -2243,8 +1745,6 @@ export function WatchlistView() {
                         }
                         guardDetailsNavigation(row, event);
                       }}
-                      onMouseEnter={() => setHoverCard(row.id)}
-                      onMouseLeave={() => setHoverCard((current) => (current === row.id ? null : current))}
                     >
                       {themesEditMode ? (
                         row.has_position ? (
@@ -2588,70 +2088,6 @@ export function WatchlistView() {
         </div>
       </BaseModal>
 
-      <BaseModal
-        description="Update notes and tags for this ticker. Removing a tag only unlinks it here."
-        isOpen={editingSymbol !== null}
-        onClose={() => setEditingSymbol(null)}
-        title="Edit Ticker"
-      >
-        <form className="modal-form" onSubmit={saveEdit}>
-          <label className="filter-field">
-            <span>Symbol</span>
-            <input readOnly value={editForm.symbol} />
-          </label>
-          <label className="filter-field">
-            <span>Notes</span>
-            <input
-              onChange={(event) => setEditForm((current) => ({ ...current, notes: event.target.value }))}
-              placeholder="Optional note"
-              value={editForm.notes}
-            />
-          </label>
-          <div className="tag-editor">
-            <span className="tag-editor-label">Tags</span>
-            <p className="tag-editor-note">Remove from this ticker only. Global tag deletion is in Manage watchlist → Tags.</p>
-            <div className="tag-editor-list">
-              {editForm.selectedTags.length > 0 ? (
-                editForm.selectedTags.map((tag) => (
-                  <span className="tag-pill tag-pill-editable" key={tag} style={{ backgroundColor: tagColor(tag, tags) }}>
-                    {tag}
-                    <button aria-label={`Remove ${tag}`} onClick={() => removeEditTag(tag)} type="button">
-                      x
-                    </button>
-                  </span>
-                ))
-              ) : (
-                <span className="tag-editor-empty">No tags selected.</span>
-              )}
-            </div>
-            <div className="tag-editor-add-row">
-              <input
-                list="watchlist-existing-tags"
-                onChange={(event) => setEditForm((current) => ({ ...current, tagInput: event.target.value }))}
-                placeholder="Add tag, or use commas for many"
-                value={editForm.tagInput}
-              />
-              <datalist id="watchlist-existing-tags">
-                {tags.map((tag) => (
-                  <option key={tag.name} value={tag.name} />
-                ))}
-              </datalist>
-              <button className="secondary-button" onClick={addEditInputTags} type="button">
-                Add Tag
-              </button>
-            </div>
-          </div>
-          {dialogError ? <p className="form-error">{dialogError}</p> : null}
-          <div className="modal-actions">
-            <button className="secondary-button" disabled={isSaving} onClick={() => setEditingSymbol(null)} type="button">
-              Cancel
-            </button>
-            <button className="action-button" disabled={isSaving} type="submit">
-              Save
-            </button>
-          </div>
-        </form>
-      </BaseModal>
     </>
   );
 }
