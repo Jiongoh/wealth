@@ -472,14 +472,6 @@ function ChevronIcon({ className }: { className?: string }) {
   );
 }
 
-function ArrowRightIcon() {
-  return (
-    <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-      <path d="M5 12h14M13 6l6 6-6 6" />
-    </svg>
-  );
-}
-
 function Sparkline({ points, color, area }: { points: number[]; color: string; area?: boolean }) {
   const width = 120;
   const height = 44;
@@ -783,9 +775,6 @@ export function CashView() {
       <section className="cash-section" aria-label="Liquidity snapshot">
         <div className="cash-section-head">
           <h2>Liquidity snapshot</h2>
-          <button className="cash-link" type="button" onClick={() => setFilterOpen(true)}>
-            View all accounts <ArrowRightIcon />
-          </button>
         </div>
         <div className="cash-snapshot-grid">
           {snapshots.map((snapshot) => (
