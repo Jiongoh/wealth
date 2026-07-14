@@ -10672,25 +10672,17 @@ body:has(.dashboard-page) {
   font-size: 13.5px;
 }
 
-.cash-view-all {
-  align-items: center;
-  background: none;
-  border: none;
-  color: var(--accent-deep);
-  cursor: pointer;
+.cash-timeline-sentinel {
   display: flex;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 650;
-  gap: 7px;
   justify-content: center;
-  margin: 20px auto 0;
-  padding: 8px 12px;
-  transition: gap 0.16s ease;
+  padding: 8px 0 2px;
 }
 
-.cash-view-all:hover {
-  gap: 10px;
+.cash-timeline-loading {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  opacity: 0.85;
 }
 
 .cash-footnote {
