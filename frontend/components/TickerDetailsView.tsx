@@ -587,7 +587,6 @@ function mergeMarketChartPoints(
   return points;
 }
 
-const PRICE_STEP_MULTIPLIERS = [1, 2, 2.5, 5, 10];
 const TIME_STEP_MINUTES = [
   1, 2, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440, 2880, 10_080, 20_160, 43_200,
 ];
@@ -602,19 +601,6 @@ function formatAxisLabel(time: number, rangeMs: number): string {
     return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function nicePriceStep(rawStep: number): number {
-  if (!Number.isFinite(rawStep) || rawStep <= 0) {
-    return 1;
-  }
-  const power = 10 ** Math.floor(Math.log10(rawStep));
-  for (const multiplier of PRICE_STEP_MULTIPLIERS) {
-    if (multiplier * power >= rawStep) {
-      return multiplier * power;
-    }
-  }
-  return 10 * power;
 }
 
 function priceTickValues(min: number, max: number, count = 5): number[] {
@@ -1223,7 +1209,6 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
       : null;
   const changeTone = changePct === null || changePct === 0 ? "flat" : changePct > 0 ? "up" : "down";
   const latestCandle = candles.at(-1);
-  const liveQuoteTimestamp = quote?.source_timestamp ?? quote?.updated_at ?? null;
   const marketFeed = formatFeed(quote?.feed ?? latestCandle?.feed);
   // The feed is dark over the weekend and on exchange holidays. Weekends are
   // calendar-based; holidays (no public US-holiday list in the app) are inferred

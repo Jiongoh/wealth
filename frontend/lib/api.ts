@@ -61,14 +61,6 @@ export type RealizedPnlDaily = {
   trade_count: number;
 };
 
-export type RealizedPnlBySymbol = {
-  symbol: string | null;
-  conid: string | null;
-  currency: string | null;
-  realized_pnl: DecimalValue;
-  trade_count: number;
-};
-
 export type WatchlistItem = {
   id: number;
   symbol: string;
@@ -143,27 +135,6 @@ export type PositionLot = {
   originating_transaction_id: string | null;
 };
 
-export type LotAnalysis = {
-  report_date: string | null;
-  account_id: string | null;
-  symbol: string | null;
-  conid: string | null;
-  total_quantity: DecimalValue;
-  current_price: DecimalValue;
-  total_cost_basis_money: DecimalValue;
-  avg_cost: DecimalValue;
-  unrealized_pnl: DecimalValue;
-  highest_cost_lot_quantity: DecimalValue;
-  highest_cost_lot_price: DecimalValue;
-  highest_cost_lot_cost_basis_money: DecimalValue;
-  highest_cost_lot_open_datetime: string | null;
-  highest_cost_lot_profit_pct: DecimalValue;
-  highest_cost_lot_profit_over_20: boolean | null;
-  avg_cost_without_highest_lot: DecimalValue;
-  remaining_quantity_without_highest_lot: DecimalValue;
-  remaining_cost_without_highest_lot: DecimalValue;
-};
-
 export type Trade = {
   report_date: string | null;
   account_id: string | null;
@@ -208,32 +179,6 @@ export type TradeListResponse = {
   buy_count: number;
   sell_count: number;
   symbol_filter: string;
-};
-
-export type CashReport = {
-  report_date: string | null;
-  account_id: string | null;
-  currency: string | null;
-  level_of_detail: string | null;
-  from_date: string | null;
-  to_date: string | null;
-  starting_cash: DecimalValue;
-  deposits: DecimalValue;
-  withdrawals: DecimalValue;
-  deposit_withdrawals: DecimalValue;
-  dividends: DecimalValue;
-  broker_interest_paid_received: DecimalValue;
-  commissions: DecimalValue;
-  net_trades_sales: DecimalValue;
-  net_trades_purchases: DecimalValue;
-  withholding_tax: DecimalValue;
-  transaction_tax: DecimalValue;
-  fx_translation_gain_loss: DecimalValue;
-  other_fees: DecimalValue;
-  other_income: DecimalValue;
-  other: DecimalValue;
-  ending_cash: DecimalValue;
-  ending_settled_cash: DecimalValue;
 };
 
 export type CashBalancePoint = {
@@ -371,20 +316,6 @@ export type MarketCandle = {
   vwap: DecimalValue;
 };
 
-export type MarketProviderStatus = {
-  provider: string;
-  feed: string;
-  status: string;
-  connected_at: string | null;
-  disconnected_at: string | null;
-  last_message_at: string | null;
-  message_count: number;
-  subscribed_symbols: string[] | null;
-  subscribed_count: number;
-  error_message: string | null;
-  updated_at: string;
-};
-
 export type MarketSubscriptionPlan = {
   symbols: string[];
   max_symbols: number;
@@ -458,7 +389,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ status: string }>("/health"),
   portfolioSummary: () => request<PortfolioSummary | null>("/portfolio/summary"),
   navHistory: (range: DateRange = {}) =>
     request<NavDaily[]>(withQuery("/portfolio/nav/history", { ...range })),
@@ -467,8 +397,6 @@ export const api = {
   realizedPnlSummary: () => request<RealizedPnlSummary>("/pnl/realized/summary"),
   realizedPnlDaily: (filters: DateRange & { symbol?: string } = {}) =>
     request<RealizedPnlDaily[]>(withQuery("/pnl/realized/daily", { ...filters })),
-  realizedPnlBySymbol: (range: DateRange = {}) =>
-    request<RealizedPnlBySymbol[]>(withQuery("/pnl/realized/by-symbol", { ...range })),
   watchlist: (params: { tag?: string; q?: string } = {}) =>
     request<WatchlistItem[]>(withQuery("/watchlist", { ...params })),
   searchSymbols: (params: { q: string; limit?: number }, options?: RequestInit) =>
@@ -496,8 +424,6 @@ export const api = {
     request<{ success: boolean }>(`/watchlist/tags/${tagId}`, { method: "DELETE" }),
   positions: () => request<CurrentPosition[]>("/positions/current"),
   lots: (symbol?: string) => request<PositionLot[]>(withQuery("/positions/lots", { symbol })),
-  lotAnalysis: () => request<LotAnalysis[]>("/positions/lots/analysis"),
-  marketStatus: () => request<MarketProviderStatus[]>("/market/status"),
   marketQuotes: () => request<MarketQuote[]>("/market/quotes"),
   marketQuote: (symbol: string) =>
     request<MarketQuote | null>(`/market/quotes/${encodeURIComponent(symbol)}`, { cache: "no-store" }),
@@ -517,8 +443,6 @@ export const api = {
     request<CashActivityListResponse>(withQuery("/cash/activities", { ...filters })),
   cashBalanceTimeseries: (filters: DateRange & { currency?: string } = {}) =>
     request<CashBalanceTimeseriesResponse>(withQuery("/cash/balances/timeseries", { ...filters })),
-  cashHistory: (filters: DateRange & { currency?: string } = {}) =>
-    request<CashReport[]>(withQuery("/cash/history", { ...filters })),
   syncStatus: () => request<SyncStatus>("/sync/status"),
   syncJobs: () => request<SyncJob[]>("/sync/jobs"),
   syncJobRuns: (jobKey: string, params: { limit?: number } = {}) =>
@@ -542,5 +466,4 @@ export const api = {
     }),
   runSyncJob: (jobKey: string) =>
     request<SyncRun>(`/sync/jobs/${encodeURIComponent(jobKey)}/run`, { method: "POST" }),
-  runSync: () => request<SyncRun>("/sync/run", { method: "POST" }),
 };

@@ -16,7 +16,7 @@ from app.core.constants import ALPACA_FREE_MAX_SYMBOLS
 from app.core.logging import configure_logging
 from app.models import MarketCandle, MarketProviderStatus, MarketQuote
 from app.models.market_data import utc_now
-from app.services.alpaca_feed import NEW_YORK_TZ, next_alpaca_feed_switch, resolve_alpaca_feed, resolve_market_data_route
+from app.services.alpaca_feed import NEW_YORK_TZ, resolve_alpaca_feed, resolve_market_data_route
 from app.services.market_data_retention import MarketDataCleanupResult, cleanup_market_data
 from app.services.market_data_subscription import MarketDataSubscriptionService
 from app.services.yahoo_provider import YahooCandle, YahooMarketDataProvider, YahooProviderUnavailable, YahooQuote
