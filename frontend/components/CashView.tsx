@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import {
@@ -37,6 +37,8 @@ const CURRENCY_SYMBOL: Record<string, string> = {
   CNH: "¥",
   CNY: "¥",
 };
+
+const ACTIVITY_TIMELINE_PAGE_SIZE = 6;
 
 type CurrencySnapshot = {
   currency: string;
@@ -588,9 +590,10 @@ export function CashView() {
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<CashFilterState>(EMPTY_CASH_FILTERS);
-  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [visibleActivityCount, setVisibleActivityCount] = useState(ACTIVITY_TIMELINE_PAGE_SIZE);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const activitySentinelRef = useRef<HTMLLIElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -669,6 +672,39 @@ export function CashView() {
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
+  useEffect(() => {
+    setVisibleActivityCount(ACTIVITY_TIMELINE_PAGE_SIZE);
+  }, [filteredActivities]);
+
+  const timelineActivities = filteredActivities.slice(0, visibleActivityCount);
+  const hasMoreActivities = visibleActivityCount < filteredActivities.length;
+
+  useEffect(() => {
+    if (!hasMoreActivities) {
+      return;
+    }
+
+    const revealNextBatchIfNear = () => {
+      const sentinel = activitySentinelRef.current;
+      if (!sentinel) {
+        return;
+      }
+      if (sentinel.getBoundingClientRect().top <= window.innerHeight + 160) {
+        setVisibleActivityCount((current) =>
+          Math.min(current + ACTIVITY_TIMELINE_PAGE_SIZE, filteredActivities.length),
+        );
+      }
+    };
+
+    revealNextBatchIfNear();
+    window.addEventListener("scroll", revealNextBatchIfNear, { passive: true });
+    window.addEventListener("resize", revealNextBatchIfNear);
+    return () => {
+      window.removeEventListener("scroll", revealNextBatchIfNear);
+      window.removeEventListener("resize", revealNextBatchIfNear);
+    };
+  }, [hasMoreActivities, visibleActivityCount, filteredActivities.length]);
+
   const narrative = useMemo(() => buildNarrative(allActivities), [allActivities]);
 
   const activityStats = useMemo(() => {
@@ -696,8 +732,6 @@ export function CashView() {
     setIsRefreshing(true);
     window.setTimeout(() => setIsRefreshing(false), 700);
   }
-
-  const timelineActivities = showAllActivity ? filteredActivities : filteredActivities.slice(0, 6);
 
   if (isLoading) {
     return (
@@ -997,14 +1031,13 @@ export function CashView() {
                 </li>
               );
             })}
+            {hasMoreActivities ? (
+              <li className="cash-timeline-sentinel" ref={activitySentinelRef} aria-hidden="true">
+                <span className="cash-timeline-loading">Loading more activity…</span>
+              </li>
+            ) : null}
           </ol>
         )}
-
-        {filteredActivities.length > 6 ? (
-          <button className="cash-view-all" onClick={() => setShowAllActivity((current) => !current)} type="button">
-            {showAllActivity ? "Show less" : "View all activity"} <ArrowRightIcon />
-          </button>
-        ) : null}
       </section>
 
       <div className="cash-footnote">
