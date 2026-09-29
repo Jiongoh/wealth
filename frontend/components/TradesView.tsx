@@ -7,6 +7,7 @@ import { HandDrawnDivider } from "@/components/HandDrawnDivider";
 import { LoadingState } from "@/components/LoadingState";
 import { api, type DecimalValue, type Trade } from "@/lib/api";
 import { formatDisplayDate, formatDisplayTime } from "@/lib/format";
+import { tradeSaleMetrics } from "@/lib/tradeSaleMetrics";
 
 type TradePreset = "7d" | "30d" | "90d" | "ytd" | "all" | "custom";
 type SideFilter = "ALL" | "BUY" | "SELL";
@@ -141,7 +142,8 @@ const DEMO_TRADES: Trade[] = [
     trade_money: -60,
     ib_commission: -1,
     net_cash: 59,
-    realized_pnl: 20,
+    cost_basis: -40.4,
+    realized_pnl: 18.6,
     open_close_indicator: "C",
   }),
   demoTrade({
@@ -156,7 +158,8 @@ const DEMO_TRADES: Trade[] = [
     trade_money: -70,
     ib_commission: -1,
     net_cash: 69,
-    realized_pnl: 20,
+    cost_basis: -50.5,
+    realized_pnl: 18.5,
     open_close_indicator: "C",
   }),
   demoTrade({
@@ -171,7 +174,8 @@ const DEMO_TRADES: Trade[] = [
     trade_money: -70,
     ib_commission: -1,
     net_cash: 69,
-    realized_pnl: 20,
+    cost_basis: -50.5,
+    realized_pnl: 18.5,
     open_close_indicator: "C",
   }),
   demoTrade({
@@ -186,7 +190,8 @@ const DEMO_TRADES: Trade[] = [
     trade_money: -84,
     ib_commission: -1,
     net_cash: 83,
-    realized_pnl: 24,
+    cost_basis: -60.6,
+    realized_pnl: 22.4,
     open_close_indicator: "C",
   }),
 ];
@@ -267,6 +272,29 @@ function formatMoney(value: DecimalValue, currency: string | null): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(number);
+}
+
+function formatUnitPrice(value: number | null, currency: string | null): string {
+  if (value === null) {
+    return "--";
+  }
+  return new Intl.NumberFormat(undefined, currency ? {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  } : {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(value);
+}
+
+function formatReturnPct(value: number | null): string {
+  if (value === null) {
+    return "--";
+  }
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
 
 function pnlClass(value: DecimalValue): string {
@@ -670,6 +698,7 @@ export function TradesView() {
               const key = rowKey(trade, index);
               const expanded = expandedIds.has(key);
               const buy = isBuyTrade(trade);
+              const saleMetrics = tradeSaleMetrics(trade);
 
               return (
                 <li className="trades-timeline-row" key={key}>
@@ -683,7 +712,7 @@ export function TradesView() {
                   <div className={`trades-timeline-card${expanded ? " is-expanded" : ""}`}>
                     <button
                       aria-expanded={expanded}
-                      className="trades-timeline-summary"
+                      className={`trades-timeline-summary${saleMetrics ? " is-sell-summary" : ""}`}
                       onClick={() => toggleRow(key)}
                       type="button"
                     >
@@ -695,17 +724,47 @@ export function TradesView() {
                         <span className="trades-timeline-desc">{formatCompanyName(trade.description)}</span>
                       </span>
                       <span className="trades-timeline-qty">
-                        <span>{formatNumber(trade.quantity, 4)} shares</span>
-                        <span className="trades-timeline-price">@ {formatMoney(trade.trade_price, trade.currency)}</span>
+                        <span>{formatNumber(absDecimal(trade.quantity), 4)} shares</span>
+                        {buy ? <span className="trades-timeline-price">@ {formatMoney(trade.trade_price, trade.currency)}</span> : null}
                       </span>
                       <span className="trades-timeline-value">
-                        <span className="trades-timeline-value-label">Trade value</span>
+                        <span className="trades-timeline-value-label">{buy ? "Trade value" : "Sale value"}</span>
                         <strong>{formatMoney(absDecimal(trade.trade_money), trade.currency)}</strong>
                       </span>
                       <ChevronIcon className={`trades-timeline-chevron${expanded ? " is-open" : ""}`} />
+                      {saleMetrics ? (
+                        <span className="trades-sell-metrics">
+                          <span className="trades-sell-metric">
+                            <span>Cost / share</span>
+                            <strong>{formatUnitPrice(saleMetrics.costPerShare, trade.currency)}</strong>
+                          </span>
+                          <span className="trades-sell-metric">
+                            <span>Sale / share</span>
+                            <strong>{formatUnitPrice(saleMetrics.salePrice, trade.currency)}</strong>
+                          </span>
+                          <span className="trades-sell-metric">
+                            <span>Realized P&amp;L</span>
+                            <strong className={pnlClass(saleMetrics.realizedPnl)}>
+                              {formatMoney(saleMetrics.realizedPnl, trade.currency)}
+                            </strong>
+                          </span>
+                          <span className="trades-sell-metric">
+                            <span>Return</span>
+                            <strong className={pnlClass(saleMetrics.returnPct)}>
+                              {formatReturnPct(saleMetrics.returnPct)}
+                            </strong>
+                          </span>
+                        </span>
+                      ) : null}
                     </button>
                     {expanded ? (
                       <div className="trades-timeline-detail">
+                        {saleMetrics?.totalCostBasis != null ? (
+                          <div className="trades-timeline-detail-item">
+                            <span>Cost basis of shares sold</span>
+                            <strong>{formatMoney(saleMetrics.totalCostBasis, trade.currency)}</strong>
+                          </div>
+                        ) : null}
                         <div className="trades-timeline-detail-item">
                           <span>Commission</span>
                           <strong>{formatMoney(trade.ib_commission, trade.ib_commission_currency ?? trade.currency)}</strong>
@@ -748,6 +807,7 @@ export function TradesView() {
 
       <div className="trades-footnote">
         <span>All times shown in your local timezone</span>
+        <span>Sell cost/share uses the basis of shares sold; return uses realized P&amp;L after commissions.</span>
         <span className="trades-footnote-source">
           Data provided by
           {/* eslint-disable-next-line @next/next/no-img-element */}
