@@ -15,7 +15,10 @@ from app.services.ingestion_service import (
     IngestionError,
     IngestionService,
     _activities_from_cash_report,
+    _cash_activity_records,
     _commission_activity_from_trade,
+    _fx_base_activity_from_trade,
+    _stock_trade_activity_from_trade,
 )
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "minimal_flex_statement.xml"
@@ -87,6 +90,23 @@ class IngestionServiceTest(unittest.TestCase):
             report = db.get(RawFlexReport, self.report_id)
             self.assertEqual(report.status, "failed")
             self.assertIn("Flex XML ingestion failed", report.error_message)
+
+    def test_historical_trade_scope_preserves_full_xml_but_imports_only_early_trades(self) -> None:
+        with self.session_factory() as db:
+            report = db.get(RawFlexReport, self.report_id)
+            report.query_id = "historical-trades-before:2026-01-11"
+            db.commit()
+
+            result = IngestionService().ingest_report(db, self.report_id)
+            self.assertEqual(result.trades, 2)
+            self.assertEqual(result.positions_lot, 0)
+            self.assertEqual(result.cash_report, 0)
+            self.assertEqual(result.nav_daily, 0)
+            self.assertEqual(result.lot_analysis_daily, 0)
+
+            repeated = IngestionService().ingest_report(db, self.report_id)
+            self.assertEqual(repeated.trades, 2)
+            self.assertEqual(db.scalar(select(func.count(Trade.id))), 2)
 
 
 class CashReportSummaryClassificationTest(unittest.TestCase):
@@ -162,6 +182,116 @@ class CommissionFromTradeTest(unittest.TestCase):
                 self._trade(asset_class="CASH", symbol="HKD.USD", ib_commission="-0.02")
             )
         )
+
+
+class StockTradeCashActivityTest(unittest.TestCase):
+    def _trade(self, **overrides) -> dict:
+        record = {
+            "report_date": datetime(2026, 9, 24).date(),
+            "trade_date": datetime(2026, 9, 24).date(),
+            "asset_class": "STK",
+            "level_of_detail": "EXECUTION",
+            "symbol": "DEMO",
+            "currency": "USD",
+            "buy_sell": "BUY",
+            "quantity": Decimal("2"),
+            "proceeds": Decimal("-100"),
+            "ib_commission": Decimal("-0.35"),
+            "net_cash": Decimal("-100.35"),
+            "ib_execution_id": "exec-1",
+            "transaction_id": "txn-1",
+            "account_id": "TEST_ACCOUNT",
+        }
+        record.update(overrides)
+        return record
+
+    def test_buy_and_sell_proceeds_are_separate_from_commission(self) -> None:
+        for side, proceeds, net_cash, expected_type in (
+            ("BUY", Decimal("-100"), Decimal("-100.35"), "STOCK_BUY"),
+            ("SELL", Decimal("120"), Decimal("119.65"), "STOCK_SELL"),
+        ):
+            with self.subTest(side=side):
+                trade = self._trade(buy_sell=side, proceeds=proceeds, net_cash=net_cash)
+                stock_activity = _stock_trade_activity_from_trade(trade)
+                commission = _commission_activity_from_trade(trade)
+                self.assertEqual(stock_activity["activity_type"], expected_type)
+                self.assertEqual(stock_activity["amount"], proceeds)
+                self.assertEqual(stock_activity["source_section"], "TRADES")
+                self.assertEqual(stock_activity["related_trade_id"], "txn-1")
+                self.assertEqual(stock_activity["external_id"], "stock-trade-exec-1")
+                self.assertEqual(stock_activity["amount"] + commission["amount"], net_cash)
+                activities = _cash_activity_records({"trades": [trade], "cash_report": []})
+                self.assertEqual([row["activity_type"] for row in activities], ["COMMISSION", expected_type])
+
+    def test_orders_closed_lots_fx_and_missing_proceeds_do_not_add_cash(self) -> None:
+        for overrides in (
+            {"level_of_detail": "ORDER"},
+            {"level_of_detail": "CLOSED_LOT"},
+            {"asset_class": "CASH", "symbol": "USD.HKD"},
+            {"proceeds": None},
+            {"proceeds": Decimal("0")},
+        ):
+            with self.subTest(overrides=overrides):
+                self.assertIsNone(_stock_trade_activity_from_trade(self._trade(**overrides)))
+
+
+class FxBaseCashActivityTest(unittest.TestCase):
+    def _trade(self, **overrides) -> dict:
+        record = {
+            "report_date": datetime(2026, 7, 1).date(),
+            "trade_date": datetime(2026, 7, 1).date(),
+            "asset_class": "CASH",
+            "level_of_detail": "EXECUTION",
+            "symbol": "USD.CNH",
+            "currency": "CNH",
+            "buy_sell": "BUY",
+            "quantity": Decimal("480"),
+            "proceeds": Decimal("-3263.2464"),
+            "net_cash": Decimal("0"),
+            "ib_commission": Decimal("0"),
+            "ib_commission_currency": "USD",
+            "ib_execution_id": "fx-exec-1",
+            "transaction_id": "fx-txn-1",
+            "account_id": "TEST_ACCOUNT",
+        }
+        record.update(overrides)
+        return record
+
+    def test_buy_fx_creates_quote_debit_and_base_credit(self) -> None:
+        activities = _cash_activity_records({"trades": [self._trade()], "cash_report": []})
+        self.assertEqual(len(activities), 2)
+        self.assertEqual([(row["currency"], row["amount"]) for row in activities], [
+            ("CNH", Decimal("-3263.2464")),
+            ("USD", Decimal("480")),
+        ])
+        self.assertEqual(activities[1]["activity_type"], "FX_CONVERSION")
+        self.assertEqual(activities[1]["related_trade_id"], "fx-txn-1")
+        self.assertEqual(activities[1]["external_id"], "fx-base-fx-exec-1")
+
+    def test_sell_fx_creates_base_debit_and_base_currency_commission(self) -> None:
+        activity = _fx_base_activity_from_trade(
+            self._trade(
+                buy_sell="SELL",
+                quantity=Decimal("-10"),
+                proceeds=Decimal("68"),
+                ib_commission=Decimal("-0.25"),
+            )
+        )
+        self.assertEqual(activity["currency"], "USD")
+        self.assertEqual(activity["amount"], Decimal("-10.25"))
+        self.assertIn("spent for CNH", activity["description"])
+
+    def test_non_execution_or_unmatched_currency_cannot_infer_second_leg(self) -> None:
+        for overrides in (
+            {"level_of_detail": "ORDER"},
+            {"symbol": "NOT_A_PAIR"},
+            {"currency": "USD"},
+            {"quantity": None},
+            {"quantity": Decimal("0")},
+            {"asset_class": "STK", "symbol": "DEMO"},
+        ):
+            with self.subTest(overrides=overrides):
+                self.assertIsNone(_fx_base_activity_from_trade(self._trade(**overrides)))
 
 
 if __name__ == "__main__":

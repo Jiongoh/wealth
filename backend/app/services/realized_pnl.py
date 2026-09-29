@@ -168,8 +168,16 @@ class RealizedPnlService:
 
 
 def _prefer_closed_lot_rows(rows: list[Trade]) -> list[Trade]:
-    closed_rows = [row for row in rows if _is_closed_lot_row(row)]
-    return closed_rows if closed_rows else rows
+    # Different Flex reports may use different trade-detail settings. A
+    # historical report with closed lots must not hide execution P/L from
+    # newer reports that have no closed-lot rows.
+    reports_with_closed_lots = {
+        row.raw_flex_report_id for row in rows if _is_closed_lot_row(row)
+    }
+    return [
+        row for row in rows
+        if _is_closed_lot_row(row) or row.raw_flex_report_id not in reports_with_closed_lots
+    ]
 
 
 def _is_closed_lot_row(row: Trade) -> bool:

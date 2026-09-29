@@ -12,7 +12,6 @@ from app.models.sync_job import SyncJob
 from app.models.sync_run import SyncRun
 from app.models.sync_schedule import SyncSchedule
 from app.models.us_symbol import UsSymbol
-from app.models.watchlist import WatchlistTag, WatchlistTicker, WatchlistTickerTag
 
 __all__ = [
     "CashReport",
@@ -29,7 +28,4 @@ __all__ = [
     "SyncSchedule",
     "Trade",
     "UsSymbol",
-    "WatchlistTag",
-    "WatchlistTicker",
-    "WatchlistTickerTag",
 ]

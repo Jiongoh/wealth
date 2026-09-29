@@ -46,14 +46,6 @@ export function PositionsIcon(props: IconProps) {
   );
 }
 
-export function WatchlistIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M12 2.5l2.92 5.92 6.53.95-4.72 4.6 1.11 6.5L12 17.9l-5.84 3.07 1.11-6.5-4.72-4.6 6.53-.95z" />
-    </Svg>
-  );
-}
-
 export function TradesIcon(props: IconProps) {
   return (
     <Svg {...props}>

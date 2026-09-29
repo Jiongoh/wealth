@@ -10,7 +10,6 @@ import {
   PositionsIcon,
   SyncIcon,
   TradesIcon,
-  WatchlistIcon,
 } from "@/components/NavIcons";
 
 type NavItem = {
@@ -24,7 +23,6 @@ type NavItem = {
 const navigation: NavItem[] = [
   { label: "Dashboard", href: "/", icon: DashboardIcon },
   { label: "Positions", href: "/positions", icon: PositionsIcon },
-  { label: "Watchlist", href: "/watchlist", icon: WatchlistIcon },
   { label: "Trades", href: "/trades", icon: TradesIcon },
   { label: "Cash", href: "/cash", icon: CashIcon },
   { label: "Sync", href: "/sync", icon: SyncIcon, dividerBefore: true },

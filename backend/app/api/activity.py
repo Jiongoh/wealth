@@ -184,6 +184,7 @@ def get_cash_activities(
         ).all()
         if row.amount is not None and row.amount != 0
     ]
+    rows = _dedupe_trade_cash_activities(rows)
     by_type = {
         activity: 0
         for activity in (
@@ -193,6 +194,8 @@ def get_cash_activities(
             "DIVIDEND",
             "INTEREST",
             "COMMISSION",
+            "STOCK_BUY",
+            "STOCK_SELL",
             "TAX",
             "FEE",
             "OTHER",
@@ -202,6 +205,30 @@ def get_cash_activities(
         by_type[row.activity_type or "OTHER"] = by_type.get(row.activity_type or "OTHER", 0) + 1
 
     return CashActivityListResponse(items=rows, total_count=len(rows), by_type=by_type)
+
+
+def _dedupe_trade_cash_activities(rows: list[CashActivity]) -> list[CashActivity]:
+    """Keep one visible cash entry per execution across overlapping reports."""
+    ordered = sorted(rows, key=lambda row: (row.raw_flex_report_id, row.id), reverse=True)
+    seen: set[tuple[object, ...]] = set()
+    occurrence_by_report: Counter[tuple[int, tuple[object, ...]]] = Counter()
+    kept_ids: set[int] = set()
+    for row in ordered:
+        if (
+            row.source_section != "TRADES"
+            or row.activity_type not in {"COMMISSION", "FX_CONVERSION", "STOCK_BUY", "STOCK_SELL"}
+            or not row.external_id
+        ):
+            kept_ids.add(row.id)
+            continue
+        identity = (row.account_id, row.activity_type, row.external_id, row.currency)
+        report_key = (row.raw_flex_report_id, identity)
+        occurrence_by_report[report_key] += 1
+        dedupe_key = (*identity, occurrence_by_report[report_key])
+        if dedupe_key not in seen:
+            seen.add(dedupe_key)
+            kept_ids.add(row.id)
+    return [row for row in rows if row.id in kept_ids]
 
 
 def _cash_activity_currencies(

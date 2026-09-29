@@ -5,10 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
-import { ApiError, api, type CurrentPosition, type DecimalValue } from "@/lib/api";
+import { api, type CurrentPosition, type DecimalValue } from "@/lib/api";
 import { POSITIONS_DEMO } from "@/lib/dashboardDemo";
-
-const DEFAULT_LARGEST_NOTE = "The portfolio leans heavily here.";
 
 type SortKey =
   | "symbol"
@@ -305,14 +303,8 @@ export function PositionsView() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("market_value");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  // Per-symbol notes, sourced from the watchlist (keyed by upper-case symbol).
-  const [notes, setNotes] = useState<Record<string, string>>({});
   // Per-symbol full names, sourced from the /symbols directory endpoint.
   const [names, setNames] = useState<Record<string, string>>({});
-  const [editingNote, setEditingNote] = useState(false);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [noteSaving, setNoteSaving] = useState(false);
-  const [noteError, setNoteError] = useState<string | null>(null);
   // Latest sync timestamp (ISO), sourced from the sync status endpoint.
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
 
@@ -326,7 +318,6 @@ export function PositionsView() {
     if (isDemo) {
       setPositions(POSITIONS_DEMO);
       setNames(DEMO_NAMES);
-      setNotes({ LITE: "A majority position in Lithium Americas." });
       // Real latest ibkr_flex_sync finished_at from the server DB, so the local
       // preview reflects an actual timestamp rather than a fabricated one.
       setSyncedAt("2026-06-22T06:30:05Z"); // 14:30 UTC+8
@@ -345,22 +336,6 @@ export function PositionsView() {
           setError(requestError instanceof Error ? requestError.message : "Request failed.");
         }
       });
-
-    // Notes are stored on watchlist items; pull them in parallel. A failure
-    // here must not block the positions table, so we swallow the error.
-    api
-      .watchlist()
-      .then((items) => {
-        if (!active) return;
-        const map: Record<string, string> = {};
-        for (const item of items) {
-          if (item.symbol && item.notes) {
-            map[item.symbol.toUpperCase()] = item.notes;
-          }
-        }
-        setNotes(map);
-      })
-      .catch(() => undefined);
 
     // Latest IBKR Flex Report sync time for the footnote — specifically the
     // ibkr_flex_sync job (not whichever job ran most recently). Non-blocking.
@@ -484,53 +459,6 @@ export function PositionsView() {
   const positionCount = currentPositions.length;
   const syncedTime = formatSyncTime(syncedAt);
 
-  const largestSymbolKey = largest ? largest.symbol.toUpperCase() : null;
-  const storedNote = largestSymbolKey ? notes[largestSymbolKey] ?? "" : "";
-  const noteText = storedNote.trim() ? storedNote : DEFAULT_LARGEST_NOTE;
-
-  function startEditNote() {
-    setNoteDraft(storedNote);
-    setNoteError(null);
-    setEditingNote(true);
-  }
-
-  function cancelEditNote() {
-    setEditingNote(false);
-    setNoteError(null);
-  }
-
-  async function saveNote() {
-    if (!largest || !largestSymbolKey) {
-      return;
-    }
-    const symbol = largest.symbol;
-    const value = noteDraft.trim();
-    setNoteSaving(true);
-    setNoteError(null);
-
-    try {
-      if (!isDemo) {
-        try {
-          await api.updateWatchlistTicker(symbol, { notes: value || null });
-        } catch (requestError: unknown) {
-          // The symbol may not be on the watchlist yet — create it so the note
-          // has somewhere to live, mirroring the watchlist data model.
-          if (requestError instanceof ApiError && requestError.status === 404) {
-            await api.createWatchlistTicker({ symbol, notes: value || null });
-          } else {
-            throw requestError;
-          }
-        }
-      }
-      setNotes((prev) => ({ ...prev, [largestSymbolKey]: value }));
-      setEditingNote(false);
-    } catch (requestError: unknown) {
-      setNoteError(requestError instanceof Error ? requestError.message : "Could not save note.");
-    } finally {
-      setNoteSaving(false);
-    }
-  }
-
   return (
     <div className="positions-page">
       <header className="pp-hero">
@@ -568,39 +496,6 @@ export function PositionsView() {
               <p className="pp-largest-label">Largest Allocation</p>
               <p className="pp-largest-value">{largest ? `${(largest.weight * 100).toFixed(2)}%` : "--"}</p>
               <p className="pp-largest-symbol">{largest?.symbol ?? "--"}</p>
-              <span className="pp-largest-rule" aria-hidden="true" />
-              {editingNote ? (
-                <div className="pp-note-editor">
-                  <textarea
-                    autoFocus
-                    className="pp-note-textarea"
-                    maxLength={280}
-                    onChange={(event) => setNoteDraft(event.target.value)}
-                    placeholder={DEFAULT_LARGEST_NOTE}
-                    rows={3}
-                    value={noteDraft}
-                  />
-                  {noteError ? <p className="pp-note-error">{noteError}</p> : null}
-                  <div className="pp-note-actions">
-                    <button className="pp-note-cancel" onClick={cancelEditNote} type="button">
-                      Cancel
-                    </button>
-                    <button className="pp-note-save" disabled={noteSaving} onClick={saveNote} type="button">
-                      {noteSaving ? "Saving…" : "Save"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  className="pp-largest-note"
-                  onClick={startEditNote}
-                  title="Edit note"
-                  type="button"
-                >
-                  <span className={storedNote.trim() ? undefined : "pp-largest-note-muted"}>{noteText}</span>
-                  <span className="pp-note-edit-hint" aria-hidden="true">✎</span>
-                </button>
-              )}
             </article>
 
             <article className="pp-bars-card">

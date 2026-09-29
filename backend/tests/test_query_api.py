@@ -92,8 +92,6 @@ class QueryApiTest(unittest.TestCase):
             "/api/portfolio/performance/daily",
             "/api/pnl/realized/daily",
             "/api/pnl/realized/by-symbol",
-            "/api/watchlist",
-            "/api/watchlist/tags",
         ):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
@@ -115,12 +113,15 @@ class QueryApiTest(unittest.TestCase):
                     "DIVIDEND": 0,
                     "INTEREST": 0,
                     "COMMISSION": 0,
+                    "STOCK_BUY": 0,
+                    "STOCK_SELL": 0,
                     "TAX": 0,
                     "FEE": 0,
                     "OTHER": 0,
                 },
             },
         )
+
         trades = self.client.get("/api/trades")
         self.assertEqual(trades.status_code, 200)
         self.assertEqual(
@@ -140,6 +141,92 @@ class QueryApiTest(unittest.TestCase):
         status = self.client.get("/api/sync/status")
         self.assertEqual(status.status_code, 200)
         self.assertIsNone(status.json()["latest_run"])
+
+    def test_cash_activities_dedupe_overlapping_trade_reports(self) -> None:
+        with self.session_factory() as db:
+            for index, amount in enumerate((Decimal("-100.00"), Decimal("-101.00")), start=1):
+                report = RawFlexReport(
+                    query_id="test-query",
+                    xml_path=str(FIXTURE_PATH),
+                    xml_sha256=f"overlap-{index}",
+                    downloaded_at=datetime.now(UTC),
+                    status="parsed",
+                )
+                db.add(report)
+                db.flush()
+                for activity_type, external_id, activity_amount in (
+                    ("STOCK_BUY", "stock-trade-exec-1", amount),
+                    ("COMMISSION", "commission-txn-1", Decimal("-0.35")),
+                ):
+                    db.add(
+                        CashActivity(
+                            report_date=date(2026, 6, 5),
+                            activity_date=date(2026, 6, 5),
+                            account_id="TEST_ACCOUNT",
+                            currency="USD",
+                            amount=activity_amount,
+                            activity_type=activity_type,
+                            source_section="TRADES",
+                            symbol="DEMO",
+                            external_id=external_id,
+                            raw_flex_report_id=report.id,
+                        )
+                    )
+            db.commit()
+
+        response = self.client.get("/api/cash/activities")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 2)
+        self.assertEqual(payload["by_type"]["STOCK_BUY"], 1)
+        self.assertEqual(payload["by_type"]["COMMISSION"], 1)
+        buy = next(item for item in payload["items"] if item["activity_type"] == "STOCK_BUY")
+        self.assertEqual(Decimal(buy["amount"]), Decimal("-101.00"))
+
+    def test_cash_activities_keep_both_fx_legs_once_across_reports(self) -> None:
+        with self.session_factory() as db:
+            for index in (1, 2):
+                report = RawFlexReport(
+                    query_id="test-query",
+                    xml_path=str(FIXTURE_PATH),
+                    xml_sha256=f"fx-overlap-{index}",
+                    downloaded_at=datetime.now(UTC),
+                    status="parsed",
+                )
+                db.add(report)
+                db.flush()
+                for currency, amount, external_id in (
+                    ("CNH", Decimal("-3263.2464"), "fx-txn-1"),
+                    ("USD", Decimal("480"), "fx-base-fx-exec-1"),
+                ):
+                    db.add(
+                        CashActivity(
+                            report_date=date(2026, 7, 1),
+                            activity_date=date(2026, 7, 1),
+                            account_id="TEST_ACCOUNT",
+                            currency=currency,
+                            amount=amount,
+                            activity_type="FX_CONVERSION",
+                            source_section="TRADES",
+                            symbol="USD.CNH",
+                            fx_pair="USD.CNH",
+                            external_id=external_id,
+                            raw_flex_report_id=report.id,
+                        )
+                    )
+            db.commit()
+
+        response = self.client.get("/api/cash/activities?activity_type=FX_CONVERSION")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 2)
+        self.assertEqual(payload["by_type"]["FX_CONVERSION"], 2)
+        self.assertEqual({item["currency"] for item in payload["items"]}, {"CNH", "USD"})
+
+    def test_retired_watchlist_endpoints_are_not_registered(self) -> None:
+        for path in ("/api/watchlist", "/api/watchlist/tags"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 404, path)
 
     def test_query_endpoints_return_ingested_data_and_calculated_positions(self) -> None:
         self._ingest_fixture()
@@ -623,110 +710,6 @@ class QueryApiTest(unittest.TestCase):
         usd_response = self.client.get("/api/cash/balances/timeseries?currency=usd")
         self.assertEqual(usd_response.status_code, 200)
         self.assertEqual(usd_response.json()["currencies"], ["USD"])
-
-    def test_watchlist_crud_tags_filter_and_position_status(self) -> None:
-        self._ingest_fixture()
-
-        created = self.client.post(
-            "/api/watchlist",
-            json={"symbol": " cohr ", "tags": ["CPO", "Optical"], "notes": "Interesting optics"},
-        )
-        self.assertEqual(created.status_code, 200)
-        created_item = created.json()
-        self.assertEqual(created_item["symbol"], "COHR")
-        self.assertEqual(created_item["tags"], ["CPO", "Optical"])
-        self.assertFalse(created_item["has_position"])
-
-        # Symbols are unique: re-adding (any case/whitespace) is rejected with
-        # 409 instead of silently overwriting the existing entry.
-        duplicate = self.client.post(
-            "/api/watchlist",
-            json={"symbol": "COHR", "tags": ["Different"]},
-        )
-        self.assertEqual(duplicate.status_code, 409)
-        cohr_rows = [row for row in self.client.get("/api/watchlist").json() if row["symbol"] == "COHR"]
-        self.assertEqual(len(cohr_rows), 1)
-        self.assertEqual(cohr_rows[0]["tags"], ["CPO", "Optical"])
-
-        holding = self.client.post(
-            "/api/watchlist",
-            json={"symbol": "DEMO", "tags": ["CPO", "Semiconductor"]},
-        ).json()
-        self.assertTrue(holding["has_position"])
-        self.assertEqual(holding["latest_report_date"], "2026-01-31")
-        self.assertEqual(Decimal(holding["position_quantity"]), Decimal("2.5000000000"))
-
-        filtered = self.client.get("/api/watchlist?tag=cpo").json()
-        self.assertEqual([item["symbol"] for item in filtered], ["COHR", "DEMO"])
-        searched = self.client.get("/api/watchlist?q=co").json()
-        self.assertEqual([item["symbol"] for item in searched], ["COHR"])
-
-        tags = self.client.get("/api/watchlist/tags").json()
-        counts = {row["name"]: row["count"] for row in tags}
-        self.assertEqual(counts["CPO"], 2)
-        self.assertEqual(counts["Optical"], 1)
-        colors = {row["name"]: row["color"] for row in tags}
-        self.assertTrue(colors["CPO"].startswith("#"))
-
-        updated = self.client.patch(
-            "/api/watchlist/COHR",
-            json={"tags": ["AI Infra", "Optical"], "notes": "Updated"},
-        ).json()
-        self.assertEqual(updated["tags"], ["AI Infra", "Optical"])
-        self.assertEqual(updated["notes"], "Updated")
-
-        created_tags = self.client.post(
-            "/api/watchlist/tags",
-            json={"names": ["CPO", "AI Infra", "Quantum"]},
-        )
-        self.assertEqual(created_tags.status_code, 200)
-        tag_names = {row["name"] for row in created_tags.json()}
-        self.assertIn("Quantum", tag_names)
-
-        typo_item = self.client.post(
-            "/api/watchlist",
-            json={"symbol": "TYPO", "tags": ["semicondutor"]},
-        )
-        self.assertEqual(typo_item.status_code, 200)
-        tags_after_typo = self.client.get("/api/watchlist/tags").json()
-        tag_ids = {row["name"]: row["id"] for row in tags_after_typo}
-        merge_response = self.client.patch(
-            f"/api/watchlist/tags/{tag_ids['semicondutor']}",
-            json={"name": "Semiconductor"},
-        )
-        self.assertEqual(merge_response.status_code, 200)
-        self.assertEqual(merge_response.json()["name"], "Semiconductor")
-        merged_tags = self.client.get("/api/watchlist/tags").json()
-        merged_counts = {row["name"]: row["count"] for row in merged_tags}
-        self.assertNotIn("semicondutor", merged_counts)
-        self.assertEqual(merged_counts["Semiconductor"], 2)
-        typo_after_merge = self.client.get("/api/watchlist?q=typo").json()
-        self.assertEqual(typo_after_merge[0]["tags"], ["Semiconductor"])
-
-        quantum_id = {row["name"]: row["id"] for row in merged_tags}["Quantum"]
-        delete_tag_response = self.client.delete(f"/api/watchlist/tags/{quantum_id}")
-        self.assertEqual(delete_tag_response.status_code, 200)
-        self.assertTrue(delete_tag_response.json()["success"])
-        after_tag_delete = self.client.get("/api/watchlist/tags").json()
-        self.assertNotIn("Quantum", {row["name"] for row in after_tag_delete})
-        self.assertEqual(len(self.client.get("/api/watchlist").json()), 3)
-
-        too_many_tags = self.client.post(
-            "/api/watchlist/tags",
-            json={"names": ["One", "Two", "Three", "Four", "Five", "Six"]},
-        )
-        self.assertEqual(too_many_tags.status_code, 422)
-
-        too_many_ticker_tags = self.client.patch(
-            "/api/watchlist/COHR",
-            json={"tags": ["One", "Two", "Three", "Four", "Five", "Six"]},
-        )
-        self.assertEqual(too_many_ticker_tags.status_code, 422)
-
-        delete_response = self.client.delete("/api/watchlist/COHR")
-        self.assertEqual(delete_response.status_code, 204)
-        remaining = self.client.get("/api/watchlist").json()
-        self.assertEqual([item["symbol"] for item in remaining], ["DEMO", "TYPO"])
 
     def test_invalid_query_parameters_return_validation_errors(self) -> None:
         invalid_range = self.client.get(

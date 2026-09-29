@@ -17,11 +17,14 @@ from app.models.business_data import (
 from app.models.raw_flex_report import RawFlexReport
 from app.services.flex_parser import parse_flex_xml
 from app.services.lot_analyzer import LotAnalyzer
-from app.services.trade_classifier import is_fx_conversion_record
+from app.services.trade_classifier import FX_SYMBOL_PATTERN, is_fx_conversion_record
 
 
 class IngestionError(Exception):
     pass
+
+
+HISTORICAL_TRADES_BEFORE_PREFIX = "historical-trades-before:"
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,7 @@ class IngestionService:
             if report is None:
                 raise IngestionError(f"Raw Flex report not found: id={raw_flex_report_id}")
             parsed = parse_flex_xml(Path(report.xml_path))
+            parsed = scope_historical_trades(parsed, report.query_id)
 
             self._delete_existing_rows(db, raw_flex_report_id)
             db.add_all(
@@ -117,6 +121,38 @@ class IngestionService:
         return {"total": len(report_ids), "succeeded": succeeded, "failed": failed}
 
 
+def scope_historical_trades(parsed: dict[str, list[dict]], query_id: str) -> dict[str, list[dict]]:
+    """Preserve a full source XML while ingesting only its missing early trades.
+
+    The import scope lives in the source report's query_id so a later
+    reingest_all applies the same boundary instead of importing overlapping
+    cash, positions, or NAV data from the archived full-year report.
+    """
+    if not query_id.startswith(HISTORICAL_TRADES_BEFORE_PREFIX):
+        return parsed
+    try:
+        cutoff = date.fromisoformat(query_id[len(HISTORICAL_TRADES_BEFORE_PREFIX):])
+    except ValueError as exc:
+        raise IngestionError("Historical trade import has an invalid cutoff date") from exc
+    return {
+        section: (
+            [record for record in records if (record_date := _trade_date(record)) is not None and record_date < cutoff]
+            if section == "trades" else []
+        )
+        for section, records in parsed.items()
+    }
+
+
+def _trade_date(record: dict) -> date | None:
+    trade_date = record.get("trade_date")
+    if trade_date is not None:
+        return trade_date
+    timestamp = record.get("datetime")
+    if timestamp is not None:
+        return timestamp.date()
+    return None
+
+
 def _report_date(parsed: dict[str, list[dict]]) -> object | None:
     for section in ("nav_daily", "positions_lot", "trades", "cash_report"):
         for record in parsed[section]:
@@ -140,9 +176,15 @@ def _cash_activity_records(parsed: dict[str, list[dict]]) -> list[dict]:
         activity = _activity_from_trade(record)
         if activity is not None:
             records.append(activity)
+        fx_base_activity = _fx_base_activity_from_trade(record)
+        if fx_base_activity is not None:
+            records.append(fx_base_activity)
         commission = _commission_activity_from_trade(record)
         if commission is not None:
             records.append(commission)
+        stock_trade = _stock_trade_activity_from_trade(record)
+        if stock_trade is not None:
+            records.append(stock_trade)
     for record in parsed.get("cash_report", []):
         records.extend(_activities_from_cash_report(record))
     return records
@@ -204,6 +246,57 @@ def _activity_from_trade(record: dict) -> dict | None:
     }
 
 
+def _fx_base_activity_from_trade(record: dict) -> dict | None:
+    """Add the base-currency leg of an executed FX trade to the cash timeline.
+
+    Flex Trades stores the quote-currency proceeds and the signed base-currency
+    quantity on one execution. The existing FX activity records the quote leg;
+    this row records the received (or spent) base currency without altering
+    Cash Report balances.
+    """
+    if not is_fx_conversion_record(record):
+        return None
+    if str(record.get("level_of_detail") or "").strip().upper() != "EXECUTION":
+        return None
+    pair = _fx_pair(record.get("symbol"))
+    if pair is None or not FX_SYMBOL_PATTERN.fullmatch(pair):
+        return None
+    base_currency, quote_currency = pair.split(".", 1)
+    if _upper_or_none(record.get("currency")) != quote_currency:
+        return None
+    quantity = _first_decimal(record.get("quantity"))
+    if quantity is None or quantity == 0:
+        return None
+
+    commission = _first_decimal(record.get("ib_commission")) or Decimal("0")
+    amount = quantity + commission if _upper_or_none(record.get("ib_commission_currency")) == base_currency else quantity
+    if amount == 0:
+        return None
+    direction = "received from" if amount > 0 else "spent for"
+    description = (
+        f"{_format_activity_money(base_currency, abs(amount))} {direction} "
+        f"{quote_currency} auto FX conversion"
+    )
+    trade_id = record.get("transaction_id") or record.get("ib_execution_id")
+    execution_id = record.get("ib_execution_id") or trade_id
+    activity_datetime = record.get("datetime")
+    return {
+        "report_date": record.get("report_date"),
+        "activity_date": _activity_date(record.get("trade_date"), activity_datetime, record.get("report_date")),
+        "activity_datetime": activity_datetime,
+        "account_id": record.get("account_id"),
+        "currency": base_currency,
+        "amount": amount,
+        "activity_type": "FX_CONVERSION",
+        "description": description,
+        "source_section": "TRADES",
+        "symbol": pair,
+        "fx_pair": pair,
+        "related_trade_id": trade_id,
+        "external_id": f"fx-base-{execution_id}" if execution_id else f"fx-base-{_fallback_external_id(record)}",
+    }
+
+
 def _commission_activity_from_trade(record: dict) -> dict | None:
     """Emit a COMMISSION activity for a single share trade.
 
@@ -242,6 +335,48 @@ def _commission_activity_from_trade(record: dict) -> dict | None:
         "fx_pair": None,
         "related_trade_id": trade_id,
         "external_id": f"commission-{trade_id}" if trade_id else f"commission-{_fallback_external_id(record)}",
+    }
+
+
+def _stock_trade_activity_from_trade(record: dict) -> dict | None:
+    """Record execution proceeds separately from the existing commission activity.
+
+    `proceeds` excludes commission, so the two signed rows add up to the
+    trade's net cash without charging commission twice. Orders and closed lots
+    must not create another cash movement for the same execution.
+    """
+    if str(record.get("asset_class") or "").strip().upper() != "STK":
+        return None
+    if str(record.get("level_of_detail") or "").strip().upper() != "EXECUTION":
+        return None
+    side = str(record.get("buy_sell") or "").strip().upper()
+    if side not in {"BUY", "SELL"}:
+        return None
+    proceeds = _first_decimal(record.get("proceeds"))
+    if proceeds is None or proceeds == 0:
+        return None
+
+    symbol = record.get("symbol")
+    quantity = _format_quantity(record.get("quantity"))
+    action = "Purchase" if side == "BUY" else "Sale"
+    description = f"{action} {quantity} {symbol}" if symbol and quantity else f"{action} {symbol or 'stock'}"
+    trade_id = record.get("transaction_id") or record.get("ib_execution_id")
+    execution_id = record.get("ib_execution_id") or trade_id
+    activity_datetime = record.get("datetime")
+    return {
+        "report_date": record.get("report_date"),
+        "activity_date": _activity_date(record.get("trade_date"), activity_datetime, record.get("report_date")),
+        "activity_datetime": activity_datetime,
+        "account_id": record.get("account_id"),
+        "currency": _upper_or_none(record.get("currency")),
+        "amount": proceeds,
+        "activity_type": f"STOCK_{side}",
+        "description": description,
+        "source_section": "TRADES",
+        "symbol": symbol,
+        "fx_pair": None,
+        "related_trade_id": trade_id,
+        "external_id": f"stock-trade-{execution_id}" if execution_id else f"stock-trade-{_fallback_external_id(record)}",
     }
 
 

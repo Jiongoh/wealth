@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.models import LotAnalysisDaily, MarketCandle, MarketProviderStatus, MarketQuote, RawFlexReport, WatchlistTicker
+from app.models import LotAnalysisDaily, MarketCandle, MarketProviderStatus, MarketQuote, RawFlexReport
 from app.services.alpaca_feed import resolve_market_data_route
 from app.workers.market_data_worker import (
     MarketDataWorkerSettings,
@@ -46,7 +46,7 @@ class MarketDataWorkerTest(unittest.TestCase):
         self.assertEqual(resolve_alpaca_feed("overnight"), "overnight")
         self.assertEqual(
             resolve_alpaca_feed("auto", datetime(2026, 6, 8, 3, 59, tzinfo=UTC)),
-            "overnight",
+            "iex",
         )
         self.assertEqual(
             resolve_alpaca_feed("auto", datetime(2026, 6, 8, 12, 0, tzinfo=UTC)),
@@ -62,19 +62,19 @@ class MarketDataWorkerTest(unittest.TestCase):
     def test_resolve_alpaca_feed_auto_new_york_boundaries(self) -> None:
         from app.services.alpaca_feed import NEW_YORK_TZ
 
-        self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 21, 0, tzinfo=NEW_YORK_TZ)), "overnight")
-        self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 3, 59, tzinfo=NEW_YORK_TZ)), "overnight")
+        self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 21, 0, tzinfo=NEW_YORK_TZ)), "iex")
+        self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 3, 59, tzinfo=NEW_YORK_TZ)), "iex")
         self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 4, 0, tzinfo=NEW_YORK_TZ)), "iex")
         self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 10, 0, tzinfo=NEW_YORK_TZ)), "iex")
         self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 19, 59, tzinfo=NEW_YORK_TZ)), "iex")
-        self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 20, 0, tzinfo=NEW_YORK_TZ)), "overnight")
+        self.assertEqual(resolve_alpaca_feed("auto", datetime(2026, 6, 8, 20, 0, tzinfo=NEW_YORK_TZ)), "iex")
 
     def test_resolve_market_data_route_boundaries(self) -> None:
         from app.services.alpaca_feed import NEW_YORK_TZ
 
         cases = [
-            (datetime(2026, 6, 8, 21, 0, tzinfo=NEW_YORK_TZ), "alpaca", "overnight"),
-            (datetime(2026, 6, 8, 3, 59, tzinfo=NEW_YORK_TZ), "alpaca", "overnight"),
+            (datetime(2026, 6, 8, 21, 0, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
+            (datetime(2026, 6, 8, 3, 59, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
             (datetime(2026, 6, 8, 4, 0, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
             (datetime(2026, 6, 8, 5, 10, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
             (datetime(2026, 6, 8, 7, 59, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
@@ -83,7 +83,7 @@ class MarketDataWorkerTest(unittest.TestCase):
             (datetime(2026, 6, 8, 16, 59, tzinfo=NEW_YORK_TZ), "alpaca", "iex"),
             (datetime(2026, 6, 8, 17, 0, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
             (datetime(2026, 6, 8, 19, 59, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
-            (datetime(2026, 6, 8, 20, 0, tzinfo=NEW_YORK_TZ), "alpaca", "overnight"),
+            (datetime(2026, 6, 8, 20, 0, tzinfo=NEW_YORK_TZ), "yahoo", "yahoo"),
         ]
         for current_time, provider, feed in cases:
             with self.subTest(current_time=current_time):
@@ -469,7 +469,14 @@ class MarketDataWorkerTest(unittest.TestCase):
                         total_quantity=Decimal("1"),
                         raw_flex_report_id=report.id,
                     ),
-                    WatchlistTicker(symbol="MSFT", realtime_enabled=True),
+                    LotAnalysisDaily(
+                        report_date=datetime(2026, 6, 8, tzinfo=UTC).date(),
+                        account_id="TEST",
+                        symbol="MSFT",
+                        conid="2",
+                        total_quantity=Decimal("1"),
+                        raw_flex_report_id=report.id,
+                    ),
                 ]
             )
             db.commit()

@@ -15,7 +15,6 @@ from app.schemas import (
     MarketProviderStatusResponse,
     MarketQuoteResponse,
     MarketSubscriptionPlanResponse,
-    MarketSubscriptionRequest,
 )
 from app.services.alpaca_feed import MarketDataRoute, resolve_market_data_route
 from app.services.market_data_subscription import MarketDataSubscriptionService
@@ -47,9 +46,9 @@ def get_market_quotes(
     settings: Settings = Depends(get_market_settings),
 ) -> list[dict[str, object]]:
     # Return one best-selected quote per symbol using the same provider
-    # selection + serialization as the single-quote endpoint, so the watchlist
-    # cards see the same active-provider price and previous_close as the details
-    # page (rather than whichever raw provider row sorted last).
+    # selection + serialization as the single-quote endpoint, so all consumers
+    # see the same active-provider price and previous_close rather than whichever
+    # raw provider row sorted last.
     route = resolve_market_data_route(settings.alpaca_feed_mode)
     rows = list(
         db.scalars(
@@ -245,27 +244,6 @@ def preview_market_data_subscriptions(
         db,
         max_symbols=limit,
     ).to_dict()
-
-
-@router.post("/subscriptions", status_code=501)
-def create_market_subscription(payload: MarketSubscriptionRequest) -> dict[str, object]:
-    # TODO(details-global): subscribe a non-held symbol to realtime data.
-    # The mechanism already exists — setting WatchlistTicker.realtime_enabled
-    # = True (creating the watchlist row if needed) makes
-    # MarketDataSubscriptionService fold the symbol into the worker's plan,
-    # subject to ALPACA_FREE_MAX_SYMBOLS. This endpoint is reserved and not yet
-    # wired so the eviction policy can be designed first: when the plan is
-    # already full, which existing symbol (if any) should be dropped to make
-    # room for a manually-requested one. Until then we fail loudly rather than
-    # silently accept a subscription that would never take effect.
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            f"Realtime subscription for non-held symbol '{_normalize_symbol(payload.symbol)}' "
-            "is not implemented yet."
-        ),
-    )
-
 
 def _normalize_symbol(symbol: str) -> str:
     return symbol.strip().upper()

@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import ALPACA_FREE_MAX_SYMBOLS
-from app.models import LotAnalysisDaily, WatchlistTicker
+from app.models import LotAnalysisDaily
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,6 @@ class MarketDataSubscriptionPlan:
     subscribed_count: int
     overflow_count: int
     holdings_count: int
-    watchlist_realtime_count: int
     excluded_symbols: list[str]
     warnings: list[str]
 
@@ -33,9 +32,7 @@ class MarketDataSubscriptionService:
     ) -> MarketDataSubscriptionPlan:
         safe_max_symbols = max(0, max_symbols)
         holding_symbols = _current_holding_symbols(db)
-        watchlist_symbols = _watchlist_realtime_symbols(db)
-        watchlist_only_symbols = [symbol for symbol in watchlist_symbols if symbol not in set(holding_symbols)]
-        candidates = holding_symbols + watchlist_only_symbols
+        candidates = holding_symbols
         subscribed_symbols = candidates[:safe_max_symbols]
         excluded_symbols = candidates[safe_max_symbols:]
         warnings: list[str] = []
@@ -44,11 +41,6 @@ class MarketDataSubscriptionService:
             warnings.append(
                 "Current holdings exceed ALPACA_MAX_SYMBOLS; some holding symbols were excluded."
             )
-        elif excluded_symbols:
-            warnings.append(
-                "Subscription candidates exceed ALPACA_MAX_SYMBOLS; realtime watchlist symbols were truncated."
-            )
-
         return MarketDataSubscriptionPlan(
             symbols=subscribed_symbols,
             max_symbols=safe_max_symbols,
@@ -56,7 +48,6 @@ class MarketDataSubscriptionService:
             subscribed_count=len(subscribed_symbols),
             overflow_count=len(excluded_symbols),
             holdings_count=len(holding_symbols),
-            watchlist_realtime_count=len(watchlist_symbols),
             excluded_symbols=excluded_symbols,
             warnings=warnings,
         )
@@ -85,16 +76,6 @@ def _current_holding_symbols(db: Session) -> list[str]:
         if _is_positive_quantity(total_quantity)
     ]
     return _unique_symbols(symbols)
-
-
-def _watchlist_realtime_symbols(db: Session) -> list[str]:
-    rows = db.scalars(
-        select(WatchlistTicker.symbol)
-        .where(WatchlistTicker.realtime_enabled.is_(True))
-        .order_by(WatchlistTicker.symbol.asc())
-    ).all()
-    return _unique_symbols(_normalize_symbol(symbol) for symbol in rows)
-
 
 def _normalize_symbol(value: str | None) -> str:
     return value.strip().upper() if value else ""

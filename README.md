@@ -84,8 +84,8 @@ Market data settings:
 | `MARKET_DATA_PROVIDER` | empty | Set to `alpaca` when enabling the future market data worker. |
 | `ALPACA_API_KEY_ID` | empty | Alpaca market data API key ID. Keep only in private `.env`; do not commit. |
 | `ALPACA_API_SECRET_KEY` | empty | Alpaca market data API secret. Keep only in private `.env`; do not commit. |
-| `ALPACA_FEED_MODE` | `auto` | Alpaca feed selection for future market data use: `auto`, `iex`, or `overnight`. |
-| `ALPACA_MAX_SYMBOLS` | `30` | Maximum watchlist symbols for future market data subscriptions. |
+| `ALPACA_FEED_MODE` | `auto` | `auto` uses free Alpaca IEX during 08:00–17:00 ET and Yahoo otherwise. `overnight` is an explicit paid-feed opt-in. |
+| `ALPACA_MAX_SYMBOLS` | `30` | Maximum current-holding symbols for market data subscriptions. |
 
 IBKR Flex settings:
 
@@ -278,9 +278,11 @@ Main API endpoints:
 | `GET /api/trades?symbol=&start_date=&end_date=` | Security trades with total/buy/sell counts. FX conversions are excluded. |
 | `GET /api/cash/history?start_date=&end_date=&currency=` | Cash history by date range and optional currency. |
 | `GET /api/cash/balances/timeseries?start_date=&end_date=&currency=` | Normalized daily cash balance series, one line per currency. |
-| `GET /api/cash/activities?start_date=&end_date=&currency=&activity_type=` | Non-zero cash movements such as deposits, withdrawals, FX conversions, dividends, interest, fees, and taxes. |
+| `GET /api/cash/activities?start_date=&end_date=&currency=&activity_type=` | Non-zero cash movements including stock purchase/sale proceeds (`STOCK_BUY`/`STOCK_SELL`), deposits, FX conversions, dividends, commissions, and taxes. Stock proceeds exclude the separately listed commission. |
 | `GET /api/sync/status` | Latest sync and raw report metadata. |
 | `POST /api/sync/run` | Trigger manual sync. |
+
+FX conversions appear as two linked `FX_CONVERSION` movements: the quote-currency amount spent or received and the signed base-currency quantity received or spent. Cash balances still come from IBKR Cash Reports, not from summing the activity timeline.
 
 List endpoints return `[]` when there is no matching data. `GET /api/portfolio/summary`
 returns `null` when no NAV data exists. Date ranges are inclusive. Reversed date ranges return

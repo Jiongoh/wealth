@@ -1,5 +1,6 @@
 import time
 import xml.etree.ElementTree as ET
+from datetime import date
 
 import httpx
 
@@ -36,9 +37,15 @@ class IBKRFlexClient:
         self.poll_seconds = settings.ibkr_statement_poll_seconds
         self.poll_attempts = settings.ibkr_statement_poll_attempts
 
-    def download_xml(self) -> bytes:
+    def download_xml(
+        self, *, from_date: date | None = None, to_date: date | None = None
+    ) -> bytes:
         self._validate_configuration()
-        reference_code = self._request_reference_code()
+        if (from_date is None) != (to_date is None):
+            raise IBKRFlexError("Both from_date and to_date are required for a historical request")
+        if from_date is not None and (to_date < from_date or (to_date - from_date).days >= 365):
+            raise IBKRFlexError("Historical request must cover 1 to 365 calendar days")
+        reference_code = self._request_reference_code(from_date=from_date, to_date=to_date)
 
         for attempt in range(self.poll_attempts):
             if self.poll_seconds:
@@ -68,8 +75,17 @@ class IBKRFlexClient:
         if self.poll_attempts < 1:
             raise IBKRFlexError("IBKR_STATEMENT_POLL_ATTEMPTS must be at least 1")
 
-    def _request_reference_code(self) -> str:
-        response_xml = self._get(self.send_request_url, "SendRequest", self.query_id)
+    def _request_reference_code(
+        self, *, from_date: date | None = None, to_date: date | None = None
+    ) -> str:
+        extra_params = (
+            {"fd": from_date.strftime("%Y%m%d"), "td": to_date.strftime("%Y%m%d")}
+            if from_date is not None and to_date is not None
+            else None
+        )
+        response_xml = self._get(
+            self.send_request_url, "SendRequest", self.query_id, extra_params=extra_params
+        )
         response_error = _response_error(response_xml)
         if response_error is not None:
             code, message = response_error
@@ -81,11 +97,16 @@ class IBKRFlexClient:
             raise IBKRFlexError("IBKR SendRequest response did not include a reference code")
         return reference_code
 
-    def _get(self, url: str, operation: str, query_id: str) -> bytes:
+    def _get(
+        self, url: str, operation: str, query_id: str, *, extra_params: dict[str, str] | None = None
+    ) -> bytes:
+        params = {"t": self.token, "q": query_id, "v": self.version}
+        if extra_params:
+            params.update(extra_params)
         try:
             response = httpx.get(
                 url,
-                params={"t": self.token, "q": query_id, "v": self.version},
+                params=params,
                 headers={"User-Agent": "ibkr-sync/0.1.0"},
                 timeout=self.timeout,
                 follow_redirects=True,

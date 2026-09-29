@@ -15,9 +15,8 @@ from app.core.constants import ALPACA_FREE_MAX_SYMBOLS
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
-from app.models import LotAnalysisDaily, RawFlexReport, WatchlistTicker
+from app.models import LotAnalysisDaily, RawFlexReport
 from app.services.market_data_subscription import MarketDataSubscriptionService
-from app.services.watchlist import WatchlistService
 
 
 def make_settings() -> Settings:
@@ -63,7 +62,7 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
         self.engine.dispose()
         self.temp_dir.cleanup()
 
-    def _seed_subscription_candidates(self) -> None:
+    def _seed_holdings(self) -> None:
         with self.session_factory() as db:
             report = RawFlexReport(
                 query_id="subscription-test",
@@ -87,6 +86,22 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
                     LotAnalysisDaily(
                         report_date=date(2026, 6, 8),
                         account_id="TEST",
+                        symbol="nvda",
+                        conid="3",
+                        total_quantity=Decimal("3"),
+                        raw_flex_report_id=report.id,
+                    ),
+                    LotAnalysisDaily(
+                        report_date=date(2026, 6, 8),
+                        account_id="TEST",
+                        symbol="tsla",
+                        conid="4",
+                        total_quantity=Decimal("4"),
+                        raw_flex_report_id=report.id,
+                    ),
+                    LotAnalysisDaily(
+                        report_date=date(2026, 6, 8),
+                        account_id="TEST",
                         symbol="msft",
                         conid="2",
                         total_quantity=Decimal("1"),
@@ -96,20 +111,16 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
                         report_date=date(2026, 6, 8),
                         account_id="TEST",
                         symbol="CASH",
-                        conid="3",
+                        conid="5",
                         total_quantity=Decimal("0"),
                         raw_flex_report_id=report.id,
                     ),
-                    WatchlistTicker(symbol="AAPL", realtime_enabled=True),
-                    WatchlistTicker(symbol="nvda", realtime_enabled=True),
-                    WatchlistTicker(symbol="tsla", realtime_enabled=True),
-                    WatchlistTicker(symbol="lite", realtime_enabled=False),
                 ]
             )
             db.commit()
 
-    def test_subscription_pool_prioritizes_holdings_and_dedupes_watchlist(self) -> None:
-        self._seed_subscription_candidates()
+    def test_subscription_pool_contains_only_current_holdings(self) -> None:
+        self._seed_holdings()
         with self.session_factory() as db:
             plan = MarketDataSubscriptionService().get_subscription_symbols(
                 db,
@@ -121,16 +132,15 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
         self.assertEqual(plan.total_candidates, 4)
         self.assertEqual(plan.subscribed_count, 3)
         self.assertEqual(plan.overflow_count, 1)
-        self.assertEqual(plan.holdings_count, 2)
-        self.assertEqual(plan.watchlist_realtime_count, 3)
+        self.assertEqual(plan.holdings_count, 4)
         self.assertEqual(plan.excluded_symbols, ["TSLA"])
         self.assertEqual(
             plan.warnings,
-            ["Subscription candidates exceed ALPACA_MAX_SYMBOLS; realtime watchlist symbols were truncated."],
+            ["Current holdings exceed ALPACA_MAX_SYMBOLS; some holding symbols were excluded."],
         )
 
     def test_subscription_pool_warns_when_holdings_exceed_limit(self) -> None:
-        self._seed_subscription_candidates()
+        self._seed_holdings()
         with self.session_factory() as db:
             plan = MarketDataSubscriptionService().get_subscription_symbols(
                 db,
@@ -146,7 +156,7 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
         )
 
     def test_default_max_symbols_comes_from_shared_constant(self) -> None:
-        self._seed_subscription_candidates()
+        self._seed_holdings()
         with self.session_factory() as db:
             plan = MarketDataSubscriptionService().get_subscription_symbols(db)
         # No max_symbols passed -> falls back to the single source of truth.
@@ -156,46 +166,8 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
         self.assertEqual(plan.overflow_count, 0)
         self.assertEqual(plan.warnings, [])
 
-    def _seed_two_holdings(self) -> None:
-        with self.session_factory() as db:
-            report = RawFlexReport(
-                query_id="cap-test",
-                xml_path=str(Path(self.temp_dir.name) / "cap.xml"),
-                xml_sha256="cap-test",
-                downloaded_at=datetime(2026, 6, 8, tzinfo=UTC),
-                status="parsed",
-            )
-            db.add(report)
-            db.flush()
-            db.add_all(
-                [
-                    LotAnalysisDaily(report_date=date(2026, 6, 8), account_id="T", symbol="AAPL",
-                                     conid="1", total_quantity=Decimal("2"), raw_flex_report_id=report.id),
-                    LotAnalysisDaily(report_date=date(2026, 6, 8), account_id="T", symbol="MSFT",
-                                     conid="2", total_quantity=Decimal("1"), raw_flex_report_id=report.id),
-                ]
-            )
-            db.commit()
-
-    def test_manual_realtime_subscription_respects_cap(self) -> None:
-        self._seed_two_holdings()
-        service = WatchlistService()
-        # holdings=2, cap=3 -> first manual subscription fits.
-        with self.session_factory() as db:
-            service.upsert_item(db, symbol="NVDA", realtime_enabled=True, max_symbols=3)
-        # holdings(2) + manual(NVDA, TSLA) = 4 > 3 -> rejected.
-        with self.session_factory() as db:
-            with self.assertRaises(ValueError):
-                service.upsert_item(db, symbol="TSLA", realtime_enabled=True, max_symbols=3)
-        # Holdings auto-subscribe and are never blocked, even at/over cap.
-        with self.session_factory() as db:
-            service.upsert_item(db, symbol="AAPL", realtime_enabled=True, max_symbols=3)
-        # No cap passed -> enforcement is off (internal callers stay uncapped).
-        with self.session_factory() as db:
-            service.upsert_item(db, symbol="TSLA", realtime_enabled=True)
-
     def test_preview_api_uses_configured_max_symbols_without_alpaca_credentials(self) -> None:
-        self._seed_subscription_candidates()
+        self._seed_holdings()
         app = create_app(make_settings())
 
         def database_override():
@@ -213,6 +185,12 @@ class MarketDataSubscriptionServiceTest(unittest.TestCase):
         self.assertEqual(payload["symbols"], ["AAPL", "MSFT", "NVDA"])
         self.assertEqual(payload["max_symbols"], 3)
         self.assertEqual(payload["overflow_count"], 1)
+
+    def test_manual_market_subscription_endpoint_is_retired(self) -> None:
+        app = create_app(make_settings())
+        with TestClient(app) as client:
+            response = client.post("/api/market/subscriptions", json={"symbol": "NVDA"})
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

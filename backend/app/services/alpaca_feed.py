@@ -21,11 +21,8 @@ def resolve_alpaca_feed(feed_mode: str, now: datetime | None = None) -> str:
     if normalized != "auto":
         raise ValueError("ALPACA_FEED_MODE must be one of auto, iex, overnight")
 
-    current = now or datetime.now(NEW_YORK_TZ)
-    current_et = current.astimezone(NEW_YORK_TZ)
-    current_time = current_et.time()
-    if current_time >= time(20, 0) or current_time < time(4, 0):
-        return "overnight"
+    # Auto mode is deliberately limited to the IEX feed included with Alpaca's
+    # free Basic plan. Paid overnight access remains an explicit opt-in.
     return "iex"
 
 
@@ -45,21 +42,13 @@ def resolve_market_data_route(feed_mode: str, now: datetime | None = None) -> Ma
     current = (now or datetime.now(NEW_YORK_TZ)).astimezone(NEW_YORK_TZ)
     current_time = current.time()
     next_switch = _next_market_data_route_switch(current)
-    if current_time >= time(20, 0) or current_time < time(4, 0):
-        return MarketDataRoute(
-            active_provider="alpaca",
-            active_feed="overnight",
-            feed_state="alpaca_overnight",
-            next_switch_time=next_switch,
-            reason="20:00-04:00 ET uses Alpaca overnight",
-        )
-    if time(4, 0) <= current_time < time(8, 0):
+    if current_time < time(8, 0):
         return MarketDataRoute(
             active_provider="yahoo",
             active_feed="yahoo",
-            feed_state="yahoo_gap_premarket",
+            feed_state="yahoo_outside_iex_hours",
             next_switch_time=next_switch,
-            reason="04:00-08:00 ET Alpaca free feed gap uses Yahoo fallback",
+            reason="Before 08:00 ET uses Yahoo because auto mode is limited to free Alpaca IEX",
         )
     if time(8, 0) <= current_time < time(17, 0):
         return MarketDataRoute(
@@ -72,18 +61,16 @@ def resolve_market_data_route(feed_mode: str, now: datetime | None = None) -> Ma
     return MarketDataRoute(
         active_provider="yahoo",
         active_feed="yahoo",
-        feed_state="yahoo_gap_afterhours",
+        feed_state="yahoo_outside_iex_hours",
         next_switch_time=next_switch,
-        reason="17:00-20:00 ET Alpaca free feed gap uses Yahoo fallback",
+        reason="After 17:00 ET uses Yahoo because auto mode is limited to free Alpaca IEX",
     )
 
 
 def _next_market_data_route_switch(current: datetime) -> datetime:
     checkpoints = [
-        current.replace(hour=4, minute=0, second=0, microsecond=0),
         current.replace(hour=8, minute=0, second=0, microsecond=0),
         current.replace(hour=17, minute=0, second=0, microsecond=0),
-        current.replace(hour=20, minute=0, second=0, microsecond=0),
     ]
     for checkpoint in checkpoints:
         if current < checkpoint:

@@ -7,7 +7,6 @@ from app.api.portfolio import router as portfolio_router
 from app.api.positions import router as positions_router
 from app.api.symbols import router as symbols_router
 from app.api.sync import router as sync_router
-from app.api.watchlist import router as watchlist_router
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api")
@@ -18,7 +17,6 @@ router.include_router(market_router)
 router.include_router(pnl_router)
 router.include_router(symbols_router)
 router.include_router(sync_router)
-router.include_router(watchlist_router)
 
 
 @router.get("/health")

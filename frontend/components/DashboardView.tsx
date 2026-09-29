@@ -203,15 +203,17 @@ function buildActivity(trades: Trade[], activities: CashActivity[]): ActivityIte
     };
   });
 
-  const fromActivities: ActivityItem[] = activities.map((activity) => ({
-    key: `cash-${activity.id}`,
-    date: activity.activity_date ?? activity.report_date ?? "",
-    action: activity.description || activity.activity_type || "Activity",
-    symbol: activity.symbol,
-    detail: "",
-    amount: decimalNumber(activity.amount),
-    currency: activity.currency,
-  }));
+  const fromActivities: ActivityItem[] = activities
+    .filter((activity) => !["STOCK_BUY", "STOCK_SELL"].includes(activity.activity_type ?? ""))
+    .map((activity) => ({
+      key: `cash-${activity.id}`,
+      date: activity.activity_date ?? activity.report_date ?? "",
+      action: activity.description || activity.activity_type || "Activity",
+      symbol: activity.symbol,
+      detail: "",
+      amount: decimalNumber(activity.amount),
+      currency: activity.currency,
+    }));
 
   return [...fromTrades, ...fromActivities]
     .filter((item) => item.date)
@@ -332,7 +334,7 @@ export function DashboardView() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [navRange, setNavRange] = useState<RangeKey>("1M");
-  const [pnlRange, setPnlRange] = useState<RangeKey>("All");
+  const [pnlRange, setPnlRange] = useState<RangeKey>("YTD");
 
   useEffect(() => {
     let active = true;

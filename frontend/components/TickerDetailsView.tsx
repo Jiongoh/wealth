@@ -289,8 +289,7 @@ function formatDateTime(value: string | null | undefined): string {
   return `${datePart} ${timePart}`;
 }
 
-// US equities (including the Blue Ocean overnight session the market-data
-// worker depends on) trade Sunday 20:00 ET through Friday 20:00 ET. Outside
+// US equities can trade Sunday 20:00 ET through Friday 20:00 ET. Outside
 // that window the upstream feed is dark, so the page has no live data and we
 // show a dedicated "markets closed" state instead of a stale price.
 function isUsMarketWeekend(now: Date): boolean {
@@ -341,11 +340,8 @@ function resolveProviderByTime(now: Date): "alpaca" | "yahoo" {
       .formatToParts(now)
       .find((part) => part.type === "hour")?.value ?? "0",
   ) % 24;
-  // 20:00–04:00 → Alpaca overnight; 08:00–17:00 → Alpaca IEX; the two gap
-  // windows (04:00–08:00, 17:00–20:00) fall back to Yahoo.
-  if (hour >= 20 || hour < 4) {
-    return "alpaca";
-  }
+  // Auto mode uses the free Alpaca IEX feed only during 08:00–17:00 ET.
+  // Yahoo handles all other hours, avoiding paid-feed authorization failures.
   if (hour >= 8 && hour < 17) {
     return "alpaca";
   }
@@ -962,15 +958,6 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
   const chartRangeRef = useRef<ChartRange>(chartRange);
   chartRangeRef.current = chartRange;
 
-  // Where the user came from drives the back button's label and target.
-  // Read from the ?from= query param (set by the linking pages); default to
-  // the watchlist when arriving directly or without an origin.
-  const [origin, setOrigin] = useState<"positions" | "watchlist">("watchlist");
-  useEffect(() => {
-    const from = new URLSearchParams(window.location.search).get("from");
-    setOrigin(from === "positions" ? "positions" : "watchlist");
-  }, [symbol]);
-
   // Company name + listing exchange from the Nasdaq Symbol Directory sync.
   // Looked up once per symbol; absent for symbols not in the directory.
   const [symbolInfo, setSymbolInfo] = useState<SymbolSearchResult | null>(null);
@@ -1000,9 +987,7 @@ export function TickerDetailsView({ symbol }: { symbol: string }) {
   }, [symbol, isDemo]);
   const symbolName = symbolInfo?.name?.trim() || null;
   const symbolExchange = symbolInfo?.exchange?.trim() || null;
-  const backTarget = origin === "positions"
-    ? { href: "/positions", label: "Back to Positions" }
-    : { href: "/watchlist", label: "Back to Watchlist" };
+  const backTarget = { href: "/positions", label: "Back to Positions" };
 
   useEffect(() => {
     let active = true;

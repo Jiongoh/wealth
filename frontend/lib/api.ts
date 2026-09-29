@@ -61,37 +61,6 @@ export type RealizedPnlDaily = {
   trade_count: number;
 };
 
-export type WatchlistItem = {
-  id: number;
-  symbol: string;
-  display_name: string | null;
-  notes: string | null;
-  realtime_enabled: boolean;
-  tags: string[];
-  has_position: boolean;
-  latest_report_date: string | null;
-  position_quantity: DecimalValue;
-  current_price: DecimalValue;
-  market_value: DecimalValue;
-  unrealized_pnl: DecimalValue;
-  updated_at: string;
-};
-
-export type WatchlistTag = {
-  id: number;
-  name: string;
-  count: number;
-  color: string | null;
-};
-
-export type WatchlistPayload = {
-  symbol?: string;
-  tags?: string[];
-  display_name?: string | null;
-  notes?: string | null;
-  realtime_enabled?: boolean;
-};
-
 export type SymbolSearchResult = {
   symbol: string;
   name: string | null;
@@ -316,18 +285,6 @@ export type MarketCandle = {
   vwap: DecimalValue;
 };
 
-export type MarketSubscriptionPlan = {
-  symbols: string[];
-  max_symbols: number;
-  total_candidates: number;
-  subscribed_count: number;
-  overflow_count: number;
-  holdings_count: number;
-  watchlist_realtime_count: number;
-  excluded_symbols: string[];
-  warnings: string[];
-};
-
 export class ApiError extends Error {
   readonly status: number;
 
@@ -397,31 +354,10 @@ export const api = {
   realizedPnlSummary: () => request<RealizedPnlSummary>("/pnl/realized/summary"),
   realizedPnlDaily: (filters: DateRange & { symbol?: string } = {}) =>
     request<RealizedPnlDaily[]>(withQuery("/pnl/realized/daily", { ...filters })),
-  watchlist: (params: { tag?: string; q?: string } = {}) =>
-    request<WatchlistItem[]>(withQuery("/watchlist", { ...params })),
   searchSymbols: (params: { q: string; limit?: number }, options?: RequestInit) =>
     request<SymbolSearchResult[]>(withQuery("/symbols/search", { ...params }), options),
   symbolInfo: (symbol: string, options?: RequestInit) =>
     request<SymbolSearchResult>(`/symbols/${encodeURIComponent(symbol)}`, options),
-  createWatchlistTicker: (payload: WatchlistPayload & { symbol: string }) =>
-    request<WatchlistItem>("/watchlist", { method: "POST", body: JSON.stringify(payload) }),
-  updateWatchlistTicker: (symbol: string, payload: WatchlistPayload) =>
-    request<WatchlistItem>(`/watchlist/${encodeURIComponent(symbol)}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  deleteWatchlistTicker: (symbol: string) =>
-    request<void>(`/watchlist/${encodeURIComponent(symbol)}`, { method: "DELETE" }),
-  watchlistTags: () => request<WatchlistTag[]>("/watchlist/tags"),
-  createWatchlistTags: (names: string[]) =>
-    request<WatchlistTag[]>("/watchlist/tags", { method: "POST", body: JSON.stringify({ names }) }),
-  updateWatchlistTag: (tagId: number, payload: { name: string }) =>
-    request<WatchlistTag>(`/watchlist/tags/${tagId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  deleteWatchlistTag: (tagId: number) =>
-    request<{ success: boolean }>(`/watchlist/tags/${tagId}`, { method: "DELETE" }),
   positions: () => request<CurrentPosition[]>("/positions/current"),
   lots: (symbol?: string) => request<PositionLot[]>(withQuery("/positions/lots", { symbol })),
   marketQuotes: () => request<MarketQuote[]>("/market/quotes"),
@@ -435,8 +371,6 @@ export const api = {
       }),
       { cache: "no-store" },
     ),
-  marketSubscriptionPlan: () =>
-    request<MarketSubscriptionPlan>("/market/subscriptions/preview", { cache: "no-store" }),
   trades: (filters: DateRange & { symbol?: string; limit?: number } = {}) =>
     request<TradeListResponse>(withQuery("/trades", { ...filters })),
   cashActivities: (filters: DateRange & { currency?: string; activity_type?: string } = {}) =>

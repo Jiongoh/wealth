@@ -12,6 +12,7 @@ import {
   type DecimalValue,
 } from "@/lib/api";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/format";
+import { buildCashTimelineEntries, filterCashTimelineEntries } from "@/lib/cashActivityTimeline";
 
 // Approximate FX rates → USD, used to convert native balances into a single
 // "cash equivalent" for the total, the allocation donut, and the share splits.
@@ -249,6 +250,19 @@ function formatSignedNative(value: number, currency: string | null): string {
   return `${sign}${formatNative(value, currency)}`;
 }
 
+function formatDetailedNative(value: DecimalValue, currency: string | null): string {
+  const amount = decimalNumber(value);
+  if (amount === null) {
+    return "—";
+  }
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  const magnitude = Math.abs(amount).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 10,
+  });
+  return `${sign}${symbolFor(currency)}${magnitude}`;
+}
+
 function formatPct(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
@@ -435,6 +449,12 @@ function activityVisual(activity: CashActivity): ActivityVisual {
 
   if (/FX/.test(type)) {
     return { icon: <SwapIcon />, toneClass: "is-fx" };
+  }
+  if (type === "STOCK_BUY") {
+    return { icon: <WithdrawalIcon />, toneClass: "is-debit" };
+  }
+  if (type === "STOCK_SELL") {
+    return { icon: <DepositIcon />, toneClass: "is-credit" };
   }
   if (/COMMISSION|FEE|TAX/.test(type)) {
     return { icon: <MinusIcon />, toneClass: "is-debit" };
@@ -643,33 +663,17 @@ export function CashView() {
     [allActivities],
   );
 
-  const filteredActivities = useMemo(() => {
-    return allActivities.filter((activity) => {
-      if (filters.currency && (activity.currency ?? "").toUpperCase() !== filters.currency) {
-        return false;
-      }
-      if (filters.activityType && (activity.activity_type ?? "").toUpperCase() !== filters.activityType) {
-        return false;
-      }
-      const activityDate = activity.activity_date ?? activity.activity_datetime?.slice(0, 10) ?? "";
-      if (filters.startDate && (!activityDate || activityDate < filters.startDate)) {
-        return false;
-      }
-      if (filters.endDate && (!activityDate || activityDate > filters.endDate)) {
-        return false;
-      }
-      return true;
-    });
-  }, [allActivities, filters]);
+  const timelineEntries = useMemo(() => buildCashTimelineEntries(allActivities), [allActivities]);
+  const filteredEntries = useMemo(() => filterCashTimelineEntries(timelineEntries, filters), [timelineEntries, filters]);
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
   useEffect(() => {
     setVisibleActivityCount(ACTIVITY_TIMELINE_PAGE_SIZE);
-  }, [filteredActivities]);
+  }, [filteredEntries]);
 
-  const timelineActivities = filteredActivities.slice(0, visibleActivityCount);
-  const hasMoreActivities = visibleActivityCount < filteredActivities.length;
+  const visibleEntries = filteredEntries.slice(0, visibleActivityCount);
+  const hasMoreActivities = visibleActivityCount < filteredEntries.length;
 
   useEffect(() => {
     if (!hasMoreActivities) {
@@ -683,7 +687,7 @@ export function CashView() {
       }
       if (sentinel.getBoundingClientRect().top <= window.innerHeight + 160) {
         setVisibleActivityCount((current) =>
-          Math.min(current + ACTIVITY_TIMELINE_PAGE_SIZE, filteredActivities.length),
+          Math.min(current + ACTIVITY_TIMELINE_PAGE_SIZE, filteredEntries.length),
         );
       }
     };
@@ -695,12 +699,12 @@ export function CashView() {
       window.removeEventListener("scroll", revealNextBatchIfNear);
       window.removeEventListener("resize", revealNextBatchIfNear);
     };
-  }, [hasMoreActivities, visibleActivityCount, filteredActivities.length]);
+  }, [hasMoreActivities, visibleActivityCount, filteredEntries.length]);
 
   const narrative = useMemo(() => buildNarrative(allActivities), [allActivities]);
 
   const activityStats = useMemo(() => {
-    const total = activities?.total_count ?? allActivities.length;
+    const total = timelineEntries.length;
     const byType = activities?.by_type ?? {};
     let deposits = 0;
     let feesCommissions = 0;
@@ -713,7 +717,7 @@ export function CashView() {
       }
     });
     return { total, deposits, feesCommissions };
-  }, [activities, allActivities]);
+  }, [activities, timelineEntries]);
 
   function handleRefresh() {
     if (!isDemo) {
@@ -943,14 +947,22 @@ export function CashView() {
           </div>
         ) : null}
 
-        {filteredActivities.length === 0 ? (
+        {filteredEntries.length === 0 ? (
           <div className="panel-state">
             <p className="cash-empty">No cash movements match the selected filters.</p>
           </div>
         ) : (
           <ol className="cash-timeline">
-            {timelineActivities.map((activity) => {
+            {visibleEntries.map(({ activity, fxCounterpart, commission }) => {
               const amount = decimalNumber(activity.amount) ?? 0;
+              const commissionAmount = commission ? (decimalNumber(commission.amount) ?? 0) : 0;
+              const netAmount = commission && activity.currency === commission.currency
+                ? amount + commissionAmount
+                : null;
+              const displayedAmount = netAmount ?? amount;
+              const fxLegs = fxCounterpart
+                ? [activity, fxCounterpart].sort((left, right) => Number(left.amount) - Number(right.amount))
+                : null;
               const visual = activityVisual(activity);
               const expanded = expandedId === activity.id;
               const dateLabel = activity.activity_datetime
@@ -968,22 +980,63 @@ export function CashView() {
                   <div className={`cash-timeline-card${expanded ? " is-expanded" : ""}`}>
                     <button
                       aria-expanded={expanded}
-                      className="cash-timeline-summary"
+                      className={`cash-timeline-summary${fxLegs ? " is-fx-paired" : ""}`}
                       onClick={() => setExpandedId((current) => (current === activity.id ? null : activity.id))}
                       type="button"
                     >
                       <span className="cash-timeline-info">
                         <strong>{formatActivityType(activity.activity_type)}</strong>
-                        <span className="cash-timeline-desc">{activity.description ?? activity.source_section ?? "—"}</span>
+                        <span className="cash-timeline-desc">
+                          {fxLegs
+                            ? `${fxLegs[0].currency} → ${fxLegs[1].currency}`
+                            : `${activity.description ?? activity.source_section ?? "—"}${commission ? ` · Commission ${formatSignedNative(commissionAmount, commission.currency)} ${commission.currency ?? ""}` : ""}`}
+                        </span>
                       </span>
-                      <span className={`cash-timeline-amount${amount > 0 ? " is-credit" : amount < 0 ? " is-debit" : ""}`}>
-                        {formatSignedNative(amount, activity.currency)}
-                      </span>
-                      <span className="cash-ccy-badge">{(activity.currency ?? "—").toUpperCase()}</span>
+                      {fxLegs ? (
+                        <span className="cash-fx-movements">
+                          {fxLegs.map((leg, index) => (
+                            <span className="cash-fx-movement" key={leg.id}>
+                              {index > 0 ? <span className="cash-fx-arrow" aria-hidden="true">→</span> : null}
+                              <span className={`cash-timeline-amount${Number(leg.amount) > 0 ? " is-credit" : " is-debit"}`}>
+                                {formatSignedNative(Number(leg.amount), leg.currency)}
+                              </span>
+                              <span className="cash-fx-currency">{(leg.currency ?? "—").toUpperCase()}</span>
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <>
+                          <span className={commission ? "cash-trade-amount" : ""}>
+                            {commission ? <span className="cash-trade-amount-label">{netAmount === null ? "Trade cash" : "Net cash"}</span> : null}
+                            <span className={`cash-timeline-amount${displayedAmount > 0 ? " is-credit" : displayedAmount < 0 ? " is-debit" : ""}`}>
+                              {formatSignedNative(displayedAmount, activity.currency)}
+                            </span>
+                          </span>
+                          <span className="cash-ccy-badge">{(activity.currency ?? "—").toUpperCase()}</span>
+                        </>
+                      )}
                       <ChevronIcon className={`cash-timeline-chevron${expanded ? " is-open" : ""}`} />
                     </button>
                     {expanded ? (
                       <div className="cash-timeline-detail">
+                        {commission ? (
+                          <>
+                            <div className="cash-detail-item">
+                              <span>Before commission</span>
+                              <strong>{formatDetailedNative(activity.amount, activity.currency)} {activity.currency ?? ""}</strong>
+                            </div>
+                            <div className="cash-detail-item">
+                              <span>Commission</span>
+                              <strong>{formatDetailedNative(commission.amount, commission.currency)} {commission.currency ?? ""}</strong>
+                            </div>
+                            {netAmount !== null ? (
+                              <div className="cash-detail-item">
+                                <span>Net cash</span>
+                                <strong>{formatDetailedNative(netAmount, activity.currency)} {activity.currency ?? ""}</strong>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
                         <div className="cash-detail-item">
                           <span>Source</span>
                           <strong>{activity.source_section ?? "—"}</strong>
